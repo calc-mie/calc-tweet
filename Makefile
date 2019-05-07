@@ -12,10 +12,10 @@ install:
 	@sudo mkdir -p ${INSCONFDIR}/temp
 	@sudo mkdir -p ${INSCONFDIR}/bot
 	@sudo cp conf/temp/* ${INSCONFDIR}/temp/ 
-	@read -p "APIKey?:" APIKey; sudo sh -c "echo  '$${APIKey}' > ${INSCONFDIR}/bot/twitter.conf"
-	@read -p "API secret key?:" APISecretKey; sudo sh -c "echo '$${APISecretKey}' >> ${INSCONFDIR}/bot/twitter.conf"
-	@read -p "Access token?:" AccessToken; sudo sh -c "echo '$${AccessToken}' >> ${INSCONFDIR}/bot/twitter.conf"
-	@read -p "Access token secret?:" AccessTokenSecret; sudo sh -c "echo '$${AccessTokenSecret}' >> ${INSCONFDIR}/bot/twitter.conf"
+	@read -p "APIKey?:" APIKey; sudo sh -c "echo  '$${APIKey}' > ${INSCONFDIR}/bot/twitterbot.conf"
+	@read -p "API secret key?:" APISecretKey; sudo sh -c "echo '$${APISecretKey}' >> ${INSCONFDIR}/bot/twitterbot.conf"
+	@read -p "Access token?:" AccessToken; sudo sh -c "echo '$${AccessToken}' >> ${INSCONFDIR}/bot/twitterbot.conf"
+	@read -p "Access token secret?:" AccessTokenSecret; sudo sh -c "echo '$${AccessTokenSecret}' >> ${INSCONFDIR}/bot/twitterbot.conf"
 	@sudo touch ${INSCONFDIR}/permissionuser.conf
 	@echo "...done"
 
