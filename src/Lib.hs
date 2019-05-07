@@ -92,7 +92,7 @@ userAdd postdata tw = do
   Left err -> return postdata
   Right us -> do
    permituser <- Data.Text.lines<$>T.readFile permitconf
-   case (elem ((gid_str.Prelude.head) us)) permituser of
+   case (not.elem ((gid_str.Prelude.head) us)) permituser of
     False -> makeNotice postdata (Prelude.tail tw)
     True -> do
      T.appendFile permitconf ((gid_str.Prelude.head) us) 
