@@ -1,139 +1,99 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE OverloadedLists #-}
+module Lib ( PostData (..)
+           , monitoring
+           , setPostData)where
 
-module Lib ( permitconf
-           , templateconf
-           , botconf
-           , GetDM (..)
-           , GetMessageData (..)
-           , GetMessageCreate (..)
-           , GetEvents (..)
-           , PostRecipient (..)
-           , PostDM (..)
-           , PostMessageData (..)
-           , PostMessageCreate (..)
-           , PostEvent (..)
-           , Tweet (..)
-           , User (..)
-           , getGetDM
-           , getTL
-           , getUser
-           , tweet) where
-
+import TwitterAPI
 import Control.Concurrent
+import Data.List
+import qualified Data.Text.IO as T
 import Data.Text
-import Data.Text.IO 
-import Data.Text.Encoding
-import Data.Aeson {- perser -}
-import Data.Aeson.TH
-import qualified Data.ByteString as B
-import qualified Data.ByteString.Char8 as C
-import Network.HTTP.Conduit
-import Web.Authenticate.OAuth
+--import System.Directory
 
-permitconf = "/usr/local/calc-tweet/permissionuser.conf"
-templateconf = "/usr/local/calc-tweet/template.conf"
-botconf = "/usr/local/calc-tweet/bot.conf"
+data PostData = PostData { sendtext :: [(Text, Text)]
+                         , calcweb :: String
+                         } deriving (Show)
 
--- get DM parser
-data GetDM = GetDM { gettext :: Text
-                    } deriving(Show)
-$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 3 } ''GetDM)
+monitoring :: PostData -> GetEvents -> IO([(Text,Text)])
+monitoring postdata befdm= do
+ threadDelay(61*1000*1000) -- 1minits
+ directmessage <- getGetDM
+ case directmessage of 
+  Left err -> error err
+  Right dm -> do
+   if (getcreated_timestamp . Prelude.head . getevents) befdm == (getcreated_timestamp . Prelude.head . getevents) dm then  monitoring postdata dm else do
+    permissionuser <- Data.Text.lines <$> T.readFile permitconf-- idが許可された人かどうかを確認する.そうじゃなかったらmonitoring postdataでloop
+    case elemIndex ((getcreated_timestamp . Prelude.head . getevents) befdm) (Prelude.map (getcreated_timestamp) (getevents dm)) of 
+     Nothing -> monitoring postdata dm
+     Just n -> do
+      let puser = permissionIndexes ((Prelude.reverse.Prelude.map (getsender_id.getmessage_create)) ((Prelude.take n.getevents) dm)) permissionuser 0
+      notices <- makeNotice postdata ((Prelude.reverse.Prelude.map (gettext . getmessage_data . getmessage_create)) ((getPermitFromIndex puser.Prelude.take n.getevents) dm))
+      monitoring notices dm
 
-data GetMessageData = GetMessageData { getmessage_data :: GetDM
-                                     , getsender_id :: Text
-                                      } deriving(Show)
-$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 3 } ''GetMessageData)
+permissionIndexes :: [Text] -> [Text] -> Int -> [Int]
+permissionIndexes dm puser index = if Prelude.null dm then [] else 
+ if elem (Prelude.head dm) puser then index:(permissionIndexes (Prelude.tail dm) puser (index + 1))
+ else permissionIndexes (Prelude.tail dm) puser (index + 1)
 
-data GetMessageCreate = GetMessageCreate { getmessage_create :: GetMessageData
-                                         , getcreated_timestamp :: Text
-                                          } deriving (Show)
-$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 3 } ''GetMessageCreate)
+getPermitFromIndex :: [Int] -> [GetMessageCreate] -> [GetMessageCreate]
+getPermitFromIndex ind mcs = if Prelude.null ind then [] else ((mcs!!(Prelude.head ind)):(getPermitFromIndex (Prelude.tail ind) mcs))
 
-data GetEvents = GetEvents { getevents :: [GetMessageCreate]
-                            } deriving (Show)
-$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 3 } ''GetEvents)
+makeNotice :: PostData -> [Text] -> IO(PostData) 
+makeNotice postdata tw = do
+ if Prelude.null tw then return postdata else if Prelude.length tw > 20 then return (setPostData([],(calcweb postdata))) else
+  case ((unpack.Prelude.head.Prelude.head.Prelude.map Data.Text.words.Data.Text.lines.Prelude.head)tw) of
+   "$notice"        -> makeNotice (setPostData(((pack "notice",(Data.Text.drop 8.Prelude.head) tw):(sendtext postdata)), (calcweb postdata))) (Prelude.tail tw)
+   "$time"          -> makeNotice (setPostData(((pack "time",(Data.Text.drop 6.Prelude.head) tw):(sendtext postdata)),(calcweb postdata))) (Prelude.tail tw)
+   "$date"          -> makeNotice (setPostData(((pack "date",(Data.Text.drop 6.Prelude.head) tw):(sendtext postdata)),(calcweb postdata))) (Prelude.tail tw)
+   "$locale"        -> makeNotice (setPostData(((pack "locale",(Data.Text.drop 8.Prelude.head) tw):(sendtext postdata)),(calcweb postdata))) (Prelude.tail tw)
+   "$clear"         -> makeNotice (setPostData([],(calcweb postdata))) (Prelude.tail tw)
+   "$post"          -> postTweet postdata tw
+--   "$post-calc-web" -> calcWebPost postdata tw
+   "$useradd"       -> userAdd postdata tw
+   otherwise        -> makeNotice postdata (Prelude.tail tw)
 
--- post DM parser
-data PostRecipient = PostRecipient { postrecipient_id :: Text
-                                    } deriving (Show)
-$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 4 } ''PostRecipient)
+setPostData :: ([(Text,Text)],String) -> PostData
+setPostData (sendtx, web) = PostData { sendtext = sendtx, calcweb = web }
 
-data PostDM = PostDM { posttext :: Text
-                      } deriving (Show)
-$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 4 } ''PostDM)
+postTweet :: PostData -> [Text] -> IO (PostData)
+postTweet postdata tw = case completePostData postdata (Prelude.map pack ["notice","time","date","locale"]) of 
+ True -> makeNotice (setPostData (sendtext postdata, calcweb postdata)) (Prelude.tail tw)
+ False -> do
+  posttw <- T.readFile noticetempconf
+  tweet $ makeTweet (sendtext postdata) posttw
+  -- print(makeTweet (sendtext.postdata) posttw) --for debug
+  makeNotice (setPostData (sendtext postdata, calcweb postdata)) (Prelude.tail tw)
 
-data PostMessageData = PostMessageData { postmessage_data :: PostDM 
-                                       , posttarget :: PostRecipient
-                                        } deriving (Show)
-$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 4 } ''PostMessageData)
+completePostData :: PostData -> [Text] -> Bool
+completePostData postdata param = if Prelude.null param then True else
+ if (or.Prelude.map (elem (Prelude.head param))) (sendtext postdata) then completePostData postdata (Prelude.tail param) else False
+ 
+--calcWebPost :: PostData -> [Text] -> IO()
+--calcWebPost postdata tw = do
+-- nowpost <- Prelude.drop (Prelude.length(calcweb postdata)) <$> getDirectoryContents
+-- case Prelude.null nowpost of
+--  True  -> makeNotice (setPostData (sendtext postdata, calcweb postdata)) (Prelide.tail tw)
+--  False -> makeNotice (setPostData (sendtext postdata, calcweb postdata)) (Prelide.tail tw)
 
-data PostMessageCreate = PostMessageCreate { posttype :: Text
-                                           , postmessage_create :: PostMessageData
-                                           } deriving (Show)
-$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 4 } ''PostMessageCreate)
+ 
 
-data PostEvent = PostEvent { postevent :: PostMessageCreate
-                              } deriving (Show)
-$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 4 } ''PostEvent)
+makeTweet :: [(Text,Text)] -> Text -> Text
+makeTweet postdata tw =  if Prelude.null postdata then tw else makeTweet (Prelude.tail postdata) (transTemp (Prelude.head postdata) tw (pack "")) 
 
---post TL parser
-data Tweet = Tweet { text :: Text} deriving (Show)
-$(deriveJSON defaultOptions  ''Tweet)
+transTemp :: (Text,Text) -> Text -> Text -> Text
+transTemp (param,text) tw beftw = if Data.Text.null tw then beftw 
+                                   else if Data.Text.take (Data.Text.length param + 2) tw == pack("\"" ++(unpack param)++"\"")
+                                     then pack ((unpack beftw)++(unpack text)++((unpack.(Data.Text.drop (Data.Text.length param + 2))) tw))
+                                   else transTemp (param,text) (Data.Text.tail tw) (pack ((unpack beftw) ++ [Data.Text.head tw]))  
 
---get User parser
-data User = User { gid_str :: Text } deriving (Show)
-$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 1 }  ''User)
-
-getGetDM :: IO (Either String GetEvents)
-getGetDM = do
- response <- do
-  req <- parseRequest $ "https://api.twitter.com/1.1/direct_messages/events/list.json"
-  (myOAuth, myCredential) <- botuser
-  signedReq <- signOAuth myOAuth myCredential req
-  manager   <- newManager tlsManagerSettings
-  httpLbs signedReq manager
- return $ eitherDecode $ responseBody response
-
-tweet :: Text -> IO ()
-tweet tw = do
- req     <- parseRequest "https://api.twitter.com/1.1/statuses/update.json"
- manager <- newManager tlsManagerSettings
- let postReq = urlEncodedBody [("status", encodeUtf8 tw)] req
- (myOAuth, myCredential) <- botuser
- signedReq <- signOAuth myOAuth myCredential postReq
- httpLbs signedReq manager
- return ()
-
-getTL :: IO (Either String [Tweet])
-getTL = do
- response <- do
-  req <- parseRequest $ "https://api.twitter.com/1.1/statuses/home_timeline.json?count=1"
-  (myOAuth, myCredential) <- botuser
-  signedReq <- signOAuth myOAuth myCredential req
-  manager   <- newManager tlsManagerSettings
-  httpLbs signedReq manager
- return $ eitherDecode $ responseBody response
-
-getUser :: Text -> IO (Either String [User])
-getUser screen_name = do
- response <- do
-  req <- parseRequest $ "https://api.twitter.com/1.1/users/lookup.json?screen_name="++(unpack screen_name)
-  (myOAuth, myCredential) <- botuser
-  signedReq <- signOAuth myOAuth myCredential req
-  manager   <- newManager tlsManagerSettings
-  httpLbs signedReq manager
- return $ eitherDecode $ responseBody response
-
-
-botuser :: IO((OAuth,Credential))
-botuser = do
- botsparameter <- Prelude.lines <$> Prelude.readFile botconf
- let  myOAuth      = newOAuth { oauthServerName     = "api.twitter.com"
-                              , oauthConsumerKey    = C.pack(botsparameter !! 0)
-                              , oauthConsumerSecret = C.pack(botsparameter !! 1)
-  }
-      myCredential = newCredential (C.pack(botsparameter !! 2)) (C.pack(botsparameter !! 3))
- return (myOAuth, myCredential)
-
+userAdd :: PostData -> [Text] -> IO (PostData)
+userAdd postdata tw = do
+ user <- (getUser ((Data.Text.drop 9.Prelude.head) tw))
+ case user of 
+  Left err -> return postdata
+  Right us -> do
+   permituser <- Data.Text.lines<$>T.readFile permitconf
+   case (elem ((gid_str.Prelude.head) us)) permituser of
+    False -> makeNotice postdata (Prelude.tail tw)
+    True -> do
+     T.appendFile permitconf ((gid_str.Prelude.head) us) 
+     makeNotice postdata (Prelude.tail tw)

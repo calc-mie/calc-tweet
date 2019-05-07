@@ -27,7 +27,7 @@ source-repository head
 
 library
   exposed-modules:
-      Lib
+      Lib, TwitterAPI
   other-modules:
       Paths_calc_tweet
   hs-source-dirs:
@@ -39,6 +39,7 @@ library
     , bytestring
     , http-conduit
     , text
+    , slack-api
   default-language: Haskell2010
 
 executable calc-tweet
