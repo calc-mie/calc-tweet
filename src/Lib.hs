@@ -13,7 +13,7 @@ data PostData = PostData { sendtext :: [(Text, Text)]
                          , calcweb :: String
                          } deriving (Show)
 
-monitoring :: PostData -> GetEvents -> IO([(Text,Text)])
+monitoring :: PostData -> GetEvents -> IO(PostData)
 monitoring postdata befdm= do
  threadDelay(61*1000*1000) -- 1minits
  directmessage <- getGetDM
@@ -56,8 +56,8 @@ setPostData (sendtx, web) = PostData { sendtext = sendtx, calcweb = web }
 
 postTweet :: PostData -> [Text] -> IO (PostData)
 postTweet postdata tw = case completePostData postdata (Prelude.map pack ["notice","time","date","locale"]) of 
- True -> makeNotice (setPostData (sendtext postdata, calcweb postdata)) (Prelude.tail tw)
- False -> do
+ False -> makeNotice (setPostData (sendtext postdata, calcweb postdata)) (Prelude.tail tw)
+ True  -> do
   posttw <- T.readFile noticetempconf
   tweet $ makeTweet (sendtext postdata) posttw
   -- print(makeTweet (sendtext.postdata) posttw) --for debug
@@ -65,7 +65,7 @@ postTweet postdata tw = case completePostData postdata (Prelude.map pack ["notic
 
 completePostData :: PostData -> [Text] -> Bool
 completePostData postdata param = if Prelude.null param then True else
- if (or.Prelude.map (elem (Prelude.head param))) (sendtext postdata) then completePostData postdata (Prelude.tail param) else False
+ if elem (Prelude.head param) ((Prelude.map fst.sendtext) postdata) then completePostData postdata (Prelude.tail param) else False
  
 --calcWebPost :: PostData -> [Text] -> IO()
 --calcWebPost postdata tw = do
