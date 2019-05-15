@@ -15,10 +15,12 @@ module TwitterAPI ( permitconf
                   , PostMessageCreate (..)
                   , PostEvent (..)
                   , Tweet (..)
+                  , PostTL (..)
                   , User (..)
                   , getGetDM
                   , getTL
                   , getUser
+                  , postRT
                   , tweet) where
 
 import Control.Concurrent
@@ -36,6 +38,7 @@ permitconf = "/usr/local/calc-tweet/permissionuser.conf"
 noticetempconf = "/usr/local/calc-tweet/temp/notice.conf"
 calcwebtempconf = "/usr/local/calc-tweet/temp/web.conf"
 twitterbotconf = "/usr/local/calc-tweet/bot/twitterbot.conf"
+
 
 -- get DM parser
 data GetDM = GetDM { gettext :: Text
@@ -83,6 +86,9 @@ $(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 4 } ''PostEvent)
 data Tweet = Tweet { text :: Text} deriving (Show)
 $(deriveJSON defaultOptions  ''Tweet)
 
+data PostTL = PostTL { id_str :: Text} deriving (Show)
+$(deriveJSON defaultOptions ''PostTL)
+
 --get User parser
 data User = User { gid_str :: Text } deriving (Show)
 $(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 1 }  ''User)
@@ -97,15 +103,15 @@ getGetDM = do
   httpLbs signedReq manager
  return $ eitherDecode $ responseBody response
 
-tweet :: Text -> IO ()
-tweet tw = do
- req     <- parseRequest "https://api.twitter.com/1.1/statuses/update.json"
- manager <- newManager tlsManagerSettings
- let postReq = urlEncodedBody [("status", encodeUtf8 tw)] req
- (myOAuth, myCredential) <- botuser
- signedReq <- signOAuth myOAuth myCredential postReq
- httpLbs signedReq manager
- return ()
+getMyTweet :: IO(Either String [Tweet])
+getMyTweet = do
+ response <- do
+  req <- parseRequest $ "https://api.twitter.com/1.1/statuses/user_timeline.json"
+  (myOAuth, myCredential) <- botuser
+  signedReq <- signOAuth myOAuth myCredential req
+  manager   <- newManager tlsManagerSettings
+  httpLbs signedReq manager
+ return $ eitherDecode $ responseBody response
 
 getTL :: IO (Either String [Tweet])
 getTL = do
@@ -126,6 +132,27 @@ getUser screen_name = do
   manager   <- newManager tlsManagerSettings
   httpLbs signedReq manager
  return $ eitherDecode $ responseBody response
+
+postRT :: Text -> IO ()
+postRT twid = do
+ req     <- parseRequest $ "https://api.twitter.com/1.1/statuses/retweet/" ++ unpack twid ++ ".json"
+ manager <- newManager tlsManagerSettings
+ let postReq = urlEncodedBody [("id", encodeUtf8 twid)] req
+ (myOAuth, myCredential) <- botuser
+ signedReq <- signOAuth myOAuth myCredential postReq
+ httpLbs signedReq manager
+ return ()
+
+tweet :: Text -> IO (Either String PostTL)
+tweet tw = do
+ responce <- do
+  req     <- parseRequest "https://api.twitter.com/1.1/statuses/update.json"
+  manager <- newManager tlsManagerSettings
+  let postReq = urlEncodedBody [("status", encodeUtf8 tw)] req
+  (myOAuth, myCredential) <- botuser
+  signedReq <- signOAuth myOAuth myCredential postReq
+  httpLbs signedReq manager
+ return $ eitherDecode $ responseBody responce
 
 
 botuser :: IO((OAuth,Credential))

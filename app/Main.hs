@@ -9,6 +9,7 @@ import qualified Data.Text.IO as T
 import Data.Text
 
 -- post test data for debug
+
 --posttx :: PostEvent
 --posttx = PostEvent {
 -- postevent = PostMessageCreate{
@@ -39,12 +40,11 @@ main = do
 
  -- calcweb-post
 
-
  -- main
  direct_message <- getGetDM
  case direct_message of
   Right dm -> do
-   monitoring (setPostData ([],"")) dm >> putStrLn "fin"
+   monitoring (setPostData ([],"",[])) dm >> putStrLn "fin"
 
  --for debug
  --postTestDM $ posttx

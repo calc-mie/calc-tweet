@@ -39,6 +39,7 @@ library
     , bytestring
     , http-conduit
     , text
+    , time
     , slack-api
   default-language: Haskell2010
 
