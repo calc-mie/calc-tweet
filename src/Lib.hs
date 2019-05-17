@@ -36,7 +36,7 @@ srvcalcdir = "/srv/calc-web/posts"
 
 monitoring :: PostData -> GetEvents -> IO PostData
 monitoring pd befdm= do
- threadDelay(61*1000*1000) -- 1minits
+ threadDelay(2*60*1000*1000) -- 1minits
  postdata <- rtCheck pd-- monitoring retweeting
  -- monitoring direct message
  directmessage <- getGetDM
@@ -177,7 +177,7 @@ userAdd postdata tw = do
   Left err -> return postdata
   Right us -> do
    permituser <- Data.Text.lines<$>T.readFile permitconf
-   if (gid_str.Prelude.head) us  `elem` permituser then 
+   if (gid_str.Prelude.head) us `notElem` permituser then 
     (do
      T.appendFile permitconf ((gid_str.Prelude.head) us) 
      makeNotice postdata (Prelude.tail tw) )
