@@ -3,6 +3,7 @@ module Lib ( PostData (..)
            , setPostData)where
 
 import TwitterAPI
+import SlackAPI
 import Control.Exception
 import Control.Concurrent
 import Data.List
@@ -96,22 +97,28 @@ postTweet postdata tw = do
   True  -> makeNotice postdata (Prelude.tail tw)
   False -> do
    posttw <- T.readFile noticetempconf
-   response <- tweet $ makeTweet ntdata 1 ((Prelude.maximum.Prelude.map (Prelude.maximum.Prelude.map snd.((pack "null",0):)))[date ntdata, time ntdata, locale ntdata]) 
-                                          (Data.Text.append posttw (Data.Text.append (notice ntdata) (pack "\n")))
+   let posttx = makeTweet ntdata 1 ((Prelude.maximum.Prelude.map (Prelude.maximum.Prelude.map snd.((pack "null",0):)))[date ntdata, time ntdata, locale ntdata]) 
+                                                                 (Data.Text.append posttw (Data.Text.append (notice ntdata) (pack "\n")))
 
---   putStrLn "post"
---   (print.sendtext) postdata
---   print ntdata
---   print $ makeTweet ntdata 1 ((Prelude.maximum.Prelude.map (Prelude.maximum.Prelude.map snd))[date ntdata, time ntdata, locale ntdata]) 
---                              (Data.Text.append posttw (Data.Text.append (notice ntdata) (pack "\n"))) --for debug
+--   response <- tweet posttx
+--   postSlack posttx
+--   
+--   case response of
+--    Left err ->  makeNotice postdata (Prelude.tail tw)
+--    Right re -> do
+--     rttime <- setNoticeTime postdata ntdata (id_str re)
+--     makeNotice (setPostData ((Prelude.filter (((/=) ((getsender_id.getmessage_create.Prelude.head)tw)).sender_id) (sendtext postdata)) ,calcweb postdata ,rttime))
+--                (Prelude.tail tw)
 
---   let response = Right (pack "po")
-   case response of
-    Left err ->  makeNotice postdata (Prelude.tail tw)
-    Right re -> do
-     rttime <- setNoticeTime postdata ntdata (id_str re)
-     makeNotice (setPostData ((Prelude.filter (((/=) ((getsender_id.getmessage_create.Prelude.head)tw)).sender_id) (sendtext postdata)) ,calcweb postdata ,rttime))
-                (Prelude.tail tw)
+   let response = PostTL { id_str = pack "1128879242018664448" }
+
+   print posttx
+   postSlack posttx 
+
+   rttime <- setNoticeTime postdata ntdata (id_str response)
+   makeNotice (setPostData ((Prelude.filter (((/=) ((getsender_id.getmessage_create.Prelude.head)tw)).sender_id) (sendtext postdata)) ,calcweb postdata ,rttime))
+              (Prelude.tail tw)
+
 
 --calcWebPost :: PostData -> [Text] -> IO()
 --calcWebPost postdata tw = do
@@ -197,6 +204,7 @@ rtCheck postdata = do
      True  -> return PostData{ sendtext = sendtext pdt, calcweb = calcweb pdt 
                              , schedule = (Prelude.filter ((>60*60).((`diffUTCTime` now).zonedTimeToUTC.snd))) (schedule pdt)}
      False -> do
-      resp<-postRT ((fst.Prelude.head) rtl) 
+--      postRT ((fst.Prelude.head) rtl) 
+      print ((fst.Prelude.head) rtl)
       loop (Prelude.tail rtl) pdt
 
