@@ -28,23 +28,22 @@ import Data.Text
 main = do
  --setup
  puser <- T.readFile permitconf
- case Data.Text.null puser of 
-  True -> do 
+ if Data.Text.null puser then 
+  (do 
    putStrLn "input userid"
    username <- T.getLine
    userid <- getUser username
    case userid of
     Left err -> putStrLn "error"
-    Right ui -> T.appendFile permitconf ((gid_str.Prelude.head)ui)
-  False -> putStrLn "start"
+    Right ui -> T.appendFile permitconf ((gid_str.Prelude.head)ui))
+  else putStrLn "start"
 
  -- calcweb-post
 
  -- main
  direct_message <- getGetDM
  case direct_message of
-  Right dm -> do
-   monitoring (setPostData ([],"",[])) dm >> putStrLn "fin"
+  Right dm -> monitoring (setPostData ([],[],[])) dm >> putStrLn "fin"
 
  --for debug
  --postTestDM $ posttx

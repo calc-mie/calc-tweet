@@ -1,5 +1,4 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE OverloadedLists #-}
 
 module SlackAPI (postSlack)where
@@ -12,8 +11,8 @@ import Control.Monad.Except
 
 slackconf = "/usr/local/calc-tweet/bot/slackbot.conf"
 
-slackBotUser :: IO((Text,Text))
-slackBotUser = T.readFile slackconf>>=return.(\[a,b]->(a,b)).Data.Text.lines
+slackBotUser :: IO(Text,Text)
+slackBotUser =(\[a,b]->(a,b)).Data.Text.lines<$>T.readFile slackconf
 
 postSlack :: Text -> IO (Either Text ())
 postSlack twid = do
