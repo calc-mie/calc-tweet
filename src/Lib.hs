@@ -139,7 +139,7 @@ calcWebPost postdata tw = do
                      author = (article!!2)
                      webtx  =  pack $   unpack author ++ "\n" 
                                      ++ unpack title ++ "について書きました。\n url: https://calc.mie.jp/posts/" 
-                                     ++ ((Prelude.takeWhile (/= '.')).Prelude.head) na
+                                     ++ Prelude.head na
                  tweet webtx
                  postSlack webtx
                  loop (Prelude.tail na) np )
