@@ -40,7 +40,7 @@ main = do
   else putStrLn "start"
 
  -- calcweb-post
- oldcalcweb <- getDirectoryContents calcwebdir
+ oldcalcweb <- getDirectoryContents srvcalcdir
  -- main
  direct_message <- getGetDM
  case direct_message of

@@ -1,4 +1,5 @@
 module Lib ( calcwebdir
+           , srvcalcdir
            , PostData (..)
            , monitoring
            , setPostData)where
@@ -30,7 +31,8 @@ data NoticeData = NoticeData { notice :: Text
                              , locale :: [(Text,Int)]
                              } deriving (Show)
 
-calcwebdir = "/home/share/posts/posts"
+calcwebdir = "/home/share/posts/posts-available/"
+srvcalcdir = "/srv/calc-web/posts"
 
 monitoring :: PostData -> GetEvents -> IO PostData
 monitoring pd befdm= do
@@ -113,19 +115,18 @@ postTweet postdata tw = do
     Left err ->  makeNotice postdata (Prelude.tail tw)
     Right re -> do
      rttime <- setNoticeTime postdata ntdata (id_str re)
-
 -- debug
---     print posttx
---     postSlack posttx 
---  
---     rttime <- setNoticeTime postdata ntdata (id_str response)
+--   let response = PostTL {id_str = pack "1129405960840028160"}
+--   print posttx
+--   rttime <- setNoticeTime postdata ntdata (id_str response)
      makeNotice (setPostData (Prelude.filter (((getsender_id.getmessage_create.Prelude.head) tw /=).sender_id) (sendtext postdata) ,calcweb postdata ,rttime))
                 (Prelude.tail tw) )
 
 
+
 calcWebPost :: PostData -> [GetMessageCreate] -> IO PostData
 calcWebPost postdata tw = do
- nowpost <- getDirectoryContents calcwebdir
+ nowpost <- getDirectoryContents srvcalcdir
  let newarticle = Prelude.filter (\x->x `notElem` (calcweb postdata)) nowpost
  if Prelude.null newarticle then makeNotice (setPostData (sendtext postdata, calcweb postdata, schedule postdata)) (Prelude.tail tw)
  else loop newarticle nowpost
@@ -133,10 +134,12 @@ calcWebPost postdata tw = do
    loop :: [String] -> [String] -> IO PostData
    loop na np = if Prelude.null na then makeNotice (setPostData (sendtext postdata, np, schedule postdata)) (Prelude.tail tw)
                 else ( do
-                 article <- Data.Text.lines<$>T.readFile (Prelude.head na)
-                 let title = Data.Text.drop 7 (article!!1)
-                 let author =  (article!!2)
-                 let webtx =  pack $ unpack author ++ "\n" ++ unpack title ++ "について書きました。\n url: https://calc.mie.jp/posts/" ++ unpack title
+                 article <- Data.Text.lines<$>T.readFile (calcwebdir ++ ((Prelude.takeWhile (/= '.')).Prelude.head) na ++ ".md")
+                 let title  = Data.Text.drop 7 (article!!1)
+                     author = (article!!2)
+                     webtx  =  pack $   unpack author ++ "\n" 
+                                     ++ unpack title ++ "について書きました。\n url: https://calc.mie.jp/posts/" 
+                                     ++ ((Prelude.takeWhile (/= '.')).Prelude.head) na
                  tweet webtx
                  postSlack webtx
                  loop (Prelude.tail na) np )
