@@ -56,6 +56,7 @@ executable calc-tweet
       base >=4.7 && <5
     , calc-tweet
     , text
+    , directory
   default-language: Haskell2010
 
 test-suite calc-tweet-test

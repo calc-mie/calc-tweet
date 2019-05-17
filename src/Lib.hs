@@ -1,4 +1,5 @@
-module Lib ( PostData (..)
+module Lib ( calcwebdir
+           , PostData (..)
            , monitoring
            , setPostData)where
 
@@ -29,7 +30,7 @@ data NoticeData = NoticeData { notice :: Text
                              , locale :: [(Text,Int)]
                              } deriving (Show)
 
-calcwebdir = "/srv/calc-web/posts"
+calcwebdir = "/home/share/posts/posts"
 
 monitoring :: PostData -> GetEvents -> IO PostData
 monitoring pd befdm= do
@@ -125,7 +126,7 @@ postTweet postdata tw = do
 calcWebPost :: PostData -> [GetMessageCreate] -> IO PostData
 calcWebPost postdata tw = do
  nowpost <- getDirectoryContents calcwebdir
- let newarticle = Prelude.filter (\x->x `elem` (calcweb postdata)) nowpost
+ let newarticle = Prelude.filter (\x->x `notElem` (calcweb postdata)) nowpost
  if Prelude.null newarticle then makeNotice (setPostData (sendtext postdata, calcweb postdata, schedule postdata)) (Prelude.tail tw)
  else loop newarticle nowpost
   where

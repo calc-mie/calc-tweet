@@ -7,6 +7,7 @@ import Lib
 import TwitterAPI
 import qualified Data.Text.IO as T
 import Data.Text
+import System.Directory
 
 -- post test data for debug
 
@@ -39,11 +40,11 @@ main = do
   else putStrLn "start"
 
  -- calcweb-post
-
+ oldcalcweb <- getDirectoryContents calcwebdir
  -- main
  direct_message <- getGetDM
  case direct_message of
-  Right dm -> monitoring (setPostData ([],[],[])) dm >> putStrLn "fin"
+  Right dm -> monitoring (setPostData ([],oldcalcweb,[])) dm >> putStrLn "fin"
 
  --for debug
  --postTestDM $ posttx
