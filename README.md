@@ -3,30 +3,87 @@
 
 \# make install
 
-##usage
+## usage
 
-user send command to bot on direct message. 
+you (or user) send commands to the bot via Twitter direct message. 
 
-- $notice "sentence"
+### set notice contents
 
-This is replaced on [連絡] "sentence"
+#### input format
+```
+ $notice "sentence"
+```
 
-- $date "date" 
-- $time "time"
-- $locale "locale"
+set `[連絡] "sentence"` on message head
 
-They are replaced on "date" "time"＠"locale"
+### set date, time and venue
 
-- $clear 
+#### input format
+```
+ $date [-(num)] "date" 
+ $time [-(num)] "time"
+ $locale [-(num)] "locale"
+```
 
-reset command 
+set `"date" "time"＠"locale"` which match argument number under `[連絡] "sentence"`
 
-- $post 
+### post
 
-create above sentence and post on timeline
+#### input format
+```
+ $post
+```
 
-- $useradd
+post on twitter and slack
 
-add authority 
+### reset 
 
+#### input format
 
+```
+ $clear 
+```
+ 
+reset your command 
+
+### authorize user 
+
+#### input format
+
+```
+ $useradd "username"
+```
+
+### notify of an update about calc-web
+
+#### input format
+
+```
+ $post-calc-web
+``` 
+post your good content. on twitter and slack
+
+## example
+
+### input
+```
+ $notice post test
+ $date 5/15(水)
+ $notice これはテストです.
+ $time 10:30~11:30
+ $locale 電算
+ $time -2 10:40
+ $locale -3 電算
+ $date -2 5/16(木)
+ $date 5/16(木)
+ $post
+```
+
+### output
+```
+[連絡]
+これはテストです.
+5/15(木) 10:30~11:30 ＠.電算
+5/16(木) 10:40
+ ＠.電算
+```
