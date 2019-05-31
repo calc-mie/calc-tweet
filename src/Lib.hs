@@ -4,8 +4,8 @@ module Lib ( calcwebdir
            , monitoring
            , setPostData)where
 
-import TwitterAPI
 import SlackAPI
+import TwitterAPI
 import Control.Exception
 import Control.Concurrent
 import Data.List
@@ -45,20 +45,22 @@ monitoring pd befdm= do
   Right dm -> if (getcreated_timestamp . Prelude.head . getevents) befdm == (getcreated_timestamp . Prelude.head . getevents) dm 
                then monitoring postdata dm 
               else do
-               permissionuser <- Data.Text.lines <$> T.readFile permitconf
-               case elemIndex ((getcreated_timestamp . Prelude.head . getevents) befdm) (Prelude.map getcreated_timestamp (getevents dm)) of 
-                Nothing -> monitoring postdata dm
-                Just n -> do
-                 let puser = permissionIndexes ((Prelude.reverse.Prelude.map (getsender_id.getmessage_create)) ((Prelude.take n.getevents) dm)) permissionuser 0
---                 print ((Prelude.reverse.getPermitFromIndex puser.Prelude.take n.getevents) dm)
-                 notices <- makeNotice postdata ((Prelude.reverse.getPermitFromIndex puser.Prelude.take n.getevents) dm)
-                 monitoring notices dm 
+               pusr <- (T.readFile permitconf >>= getUser.Data.Text.intercalate (pack ",").Data.Text.lines)
+               case pusr of
+                Left err             -> error err
+                Right permissionuser -> case elemIndex ((getcreated_timestamp . Prelude.head . getevents) befdm) (Prelude.map getcreated_timestamp (getevents dm)) of 
+                 Nothing -> monitoring postdata dm
+                 Just n  -> do
+                  let puser = permissionIndexes ((Prelude.reverse.Prelude.map (getsender_id.getmessage_create)) ((Prelude.take n.getevents) dm)) permissionuser 0
+--                  print ((Prelude.reverse.getPermitFromIndex puser.Prelude.take n.getevents) dm)
+                  notices <- makeNotice postdata ((Prelude.reverse.getPermitFromIndex puser.Prelude.take n.getevents) dm)
+                  monitoring notices dm 
 
-permissionIndexes :: [Text] -> [Text] -> Int -> [Int]
+permissionIndexes :: [Text] -> [User] -> Int -> [Int]
 permissionIndexes dm puser index 
- | Prelude.null dm              = []  
- | Prelude.head dm `elem` puser = index:permissionIndexes (Prelude.tail dm) puser (index + 1)
- | otherwise                    = permissionIndexes (Prelude.tail dm) puser (index + 1)
+ | Prelude.null dm                                    = []  
+ | Prelude.head dm `elem` (Prelude.map gid_str puser) = index:permissionIndexes (Prelude.tail dm) puser (index + 1)
+ | otherwise                                          = permissionIndexes (Prelude.tail dm) puser (index + 1)
 
 getPermitFromIndex :: [Int] -> [GetMessageCreate] -> [GetMessageCreate]
 getPermitFromIndex ind mcs = if Prelude.null ind then [] else (mcs!!Prelude.head ind):getPermitFromIndex (Prelude.tail ind) mcs
@@ -110,7 +112,7 @@ postTweet postdata tw = do
    let posttx = makeTweet ntdata 1 ((Prelude.maximum.Prelude.map (Prelude.maximum.Prelude.map snd.((pack "null",0):)))[date ntdata, time ntdata, locale ntdata]) 
                                                                  (Data.Text.append posttw (Data.Text.append (notice ntdata) (pack "\n")))
    response <- tweet posttx
-   postSlack posttx
+--   postSlack posttx
    case response of
     Left err ->  makeNotice postdata (Prelude.tail tw)
     Right re -> do
@@ -141,7 +143,7 @@ calcWebPost postdata tw = do
                                      ++ unpack title ++ "について書きました。\n url: https://calc.mie.jp/posts/" 
                                      ++ Prelude.head na
                  tweet webtx
-                 postSlack webtx
+                 -- postSlack webtx
                  loop (Prelude.tail na) np )
   
 createNoticeData :: [SendTL] -> NoticeData -> NoticeData
@@ -172,16 +174,13 @@ elemText n text = if (n `elem` Prelude.map snd text) || (not.Prelude.any ((==n).
 
 userAdd :: PostData -> [GetMessageCreate] -> IO PostData
 userAdd postdata tw = do
- user <- getUser ((Data.Text.drop 9.gettext.getmessage_data.getmessage_create.Prelude.head) tw)
- case user of 
-  Left err -> return postdata
-  Right us -> do
-   permituser <- Data.Text.lines<$>T.readFile permitconf
-   if (gid_str.Prelude.head) us `notElem` permituser then 
-    (do
-     T.appendFile permitconf ((gid_str.Prelude.head) us) 
-     makeNotice postdata (Prelude.tail tw) )
-   else makeNotice postdata (Prelude.tail tw) 
+ let user = ((Data.Text.drop 9.gettext.getmessage_data.getmessage_create.Prelude.head) tw)
+ permituser <- Data.Text.lines<$>T.readFile permitconf
+ if user `notElem` permituser then 
+  (do
+   T.appendFile permitconf user 
+   makeNotice postdata (Prelude.tail tw) )
+ else makeNotice postdata (Prelude.tail tw) 
 
 setNoticeTime :: PostData -> NoticeData -> Text -> IO [(Text,ZonedTime)]
 setNoticeTime pdt ndt res = loop 1 ((Prelude.maximum.Prelude.map (Prelude.maximum.Prelude.map snd.((pack "null",0):)))[date ndt, time ndt]) [date ndt, time ndt] pdt

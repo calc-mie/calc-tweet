@@ -27,7 +27,7 @@ import Control.Concurrent
 import Data.Text
 import Data.Text.IO 
 import Data.Text.Encoding
-import Data.Aeson {- perser -}
+import Data.Aeson
 import Data.Aeson.TH
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as C
@@ -145,7 +145,6 @@ httpManager req = do
  signedReq <- signOAuth myOAuth myCredential req
  manager <- newManager tlsManagerSettings
  httpLbs signedReq manager
- 
 
 botuser :: IO(OAuth,Credential)
 botuser = do
