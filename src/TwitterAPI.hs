@@ -119,7 +119,7 @@ getTL = do
 getUser :: Text -> IO (Either String [User])
 getUser screen_name = do
  response <- do
-  req <- parseRequest $ "https://api.twitter.com/1.1/users/lookup.json?screen_name="++unpack screen_name
+  req <- parseRequest $ "https://api.twitter.com/1.1/users/lookup.json?=screen_name"++unpack screen_name
   httpManager req
  return $ eitherDecode $ responseBody response
 
