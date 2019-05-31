@@ -178,7 +178,7 @@ userAdd postdata tw = do
  permituser <- Data.Text.lines<$>T.readFile permitconf
  if user `notElem` permituser then 
   (do
-   T.appendFile permitconf user 
+   T.appendFile permitconf (pack ((unpack user)++"\n"))
    makeNotice postdata (Prelude.tail tw) )
  else makeNotice postdata (Prelude.tail tw) 
 
