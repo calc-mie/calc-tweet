@@ -36,7 +36,7 @@ srvcalcdir = "/srv/calc-web/posts"
 
 monitoring :: PostData -> GetEvents -> IO PostData
 monitoring pd befdm= do
- threadDelay(2*60*1000*1000) -- 1minits
+ threadDelay(3*30*1000*1000) -- 1minits
  postdata <- rtCheck pd-- monitoring retweeting
  -- monitoring direct message
  directmessage <- getGetDM
@@ -46,13 +46,13 @@ monitoring pd befdm= do
                then monitoring postdata dm 
               else do
                pusr <- (T.readFile permitconf >>= getUser.Data.Text.intercalate (pack ",").Data.Text.lines)
+               print pusr
                case pusr of
                 Left err             -> error err
                 Right permissionuser -> case elemIndex ((getcreated_timestamp . Prelude.head . getevents) befdm) (Prelude.map getcreated_timestamp (getevents dm)) of 
                  Nothing -> monitoring postdata dm
                  Just n  -> do
-                  let puser = permissionIndexes ((Prelude.reverse.Prelude.map (getsender_id.getmessage_create)) ((Prelude.take n.getevents) dm)) permissionuser 0
---                  print ((Prelude.reverse.getPermitFromIndex puser.Prelude.take n.getevents) dm)
+                  let puser = permissionIndexes ((Prelude.map (getsender_id.getmessage_create)) ((Prelude.take n.getevents) dm)) permissionuser 0
                   notices <- makeNotice postdata ((Prelude.reverse.getPermitFromIndex puser.Prelude.take n.getevents) dm)
                   monitoring notices dm 
 
@@ -77,6 +77,7 @@ makeNotice postdata tw
    "$locale"        -> nextMakeNotice postdata tw "locale"
    "$clear"         -> makeNotice (setPostData ([], calcweb postdata, schedule postdata)) (Prelude.tail tw)
    "$post"          -> postTweet postdata tw
+   "$print"         -> printTweet postdata tw
    "$post-calc-web" -> calcWebPost postdata tw
    "$useradd"       -> userAdd postdata tw
    _                -> makeNotice postdata (Prelude.tail tw)
@@ -112,19 +113,25 @@ postTweet postdata tw = do
    let posttx = makeTweet ntdata 1 ((Prelude.maximum.Prelude.map (Prelude.maximum.Prelude.map snd.((pack "null",0):)))[date ntdata, time ntdata, locale ntdata]) 
                                                                  (Data.Text.append posttw (Data.Text.append (notice ntdata) (pack "\n")))
    response <- tweet posttx
---   postSlack posttx
+   postSlack posttx
    case response of
     Left err ->  makeNotice postdata (Prelude.tail tw)
     Right re -> do
      rttime <- setNoticeTime postdata ntdata (id_str re)
--- debug
---   let response = PostTL {id_str = pack "1129405960840028160"}
---   print posttx
---   rttime <- setNoticeTime postdata ntdata (id_str response)
      makeNotice (setPostData (Prelude.filter (((getsender_id.getmessage_create.Prelude.head) tw /=).sender_id) (sendtext postdata) ,calcweb postdata ,rttime))
                 (Prelude.tail tw) )
 
-
+printTweet :: PostData -> [GetMessageCreate] -> IO PostData
+printTweet postdata tw = do 
+ let ntdata = createNoticeData (Prelude.filter (((getsender_id.getmessage_create.Prelude.head) tw ==).sender_id) (sendtext postdata)) 
+                               NoticeData{notice = pack "", date = [], time = [], locale =[]}
+ if (Data.Text.null.notice) ntdata then makeNotice postdata (Prelude.tail tw)
+ else (do
+   posttw <- T.readFile noticetempconf
+   let posttx = makeTweet ntdata 1 ((Prelude.maximum.Prelude.map (Prelude.maximum.Prelude.map snd.((pack "null",0):)))[date ntdata, time ntdata, locale ntdata]) 
+                                                                 (Data.Text.append posttw (Data.Text.append (notice ntdata) (pack "\n")))
+   postDM posttx ((getsender_id.getmessage_create.Prelude.head) tw)
+   makeNotice postdata (Prelude.tail tw) )
 
 calcWebPost :: PostData -> [GetMessageCreate] -> IO PostData
 calcWebPost postdata tw = do

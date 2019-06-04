@@ -21,6 +21,7 @@ module TwitterAPI ( permitconf
                   , getTL
                   , getUser
                   , postRT
+                  , postDM
                   , tweet) where
 
 import Control.Concurrent
@@ -32,6 +33,7 @@ import Data.Aeson.TH
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as C
 import Network.HTTP.Conduit
+import Network.HTTP.Simple
 import Web.Authenticate.OAuth
 import Data.ByteString.Lazy.Internal
 import Control.Monad.IO.Class
@@ -139,12 +141,25 @@ tweet tw = do
   httpManager postReq
  return $ eitherDecode $ responseBody responce
 
+postDM :: Text -> Text -> IO ()
+postDM tw un = do
+ responce <- do
+  req <-(\n->n {method = "POST"}) <$>parseRequest "https://api.twitter.com/1.1/direct_messages/events/new.json"  
+  let json = PostEvent { postevent = PostMessageCreate 
+                                    { posttype = "message_create" 
+                                    , postmessage_create = PostMessageData 
+                                                            { postmessage_data = PostDM { posttext = tw}
+                                                            , posttarget = PostRecipient { postrecipient_id = un}}}}
+  let postreq = setRequestBodyJSON json req
+  httpManager postreq
+ return ()
+
 httpManager :: Request -> IO(Response Data.ByteString.Lazy.Internal.ByteString)
 httpManager req = do
  (myOAuth, myCredential) <- botuser
  signedReq <- signOAuth myOAuth myCredential req
  manager <- newManager tlsManagerSettings
- httpLbs signedReq manager
+ Network.HTTP.Conduit.httpLbs signedReq manager
 
 botuser :: IO(OAuth,Credential)
 botuser = do
