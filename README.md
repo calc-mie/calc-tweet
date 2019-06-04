@@ -63,6 +63,13 @@ reset your command
 ``` 
 post your good content. on twitter and slack
 
+### debug
+#### input format
+
+```
+ $print
+```
+
 ## example
 
 ### input
