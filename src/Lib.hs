@@ -93,7 +93,7 @@ makeNotice postdata tw
 
 dmTotext = gettext.getmessage_data.getmessage_create.Prelude.head
 textTolistlisttext = Prelude.map Data.Text.words.Data.Text.lines
-listlisttextTotext = Data.Text.unlines.Prelude.map Data.Text.unwords
+listlisttextTotext = Data.Text.init.Data.Text.unlines.Prelude.map Data.Text.unwords
 texttwopert = listlisttextTotext.(\n->(Prelude.tail.Prelude.head)n:(Prelude.tail n)).textTolistlisttext.dmTotext
 textothpert = listlisttextTotext.(\n->(Prelude.tail.Prelude.tail.Prelude.head)n:(Prelude.tail n)).textTolistlisttext.dmTotext
 idpert = getsender_id.getmessage_create.Prelude.head
