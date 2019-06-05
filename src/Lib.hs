@@ -180,10 +180,10 @@ makeTweet :: NoticeData -> Int -> Int -> Text -> Text
 makeTweet ntdata n mx tw = if n>mx then tw else 
  makeTweet ntdata (n+1) mx (if n `elem` Prelude.concatMap (Prelude.map snd) [date ntdata, time ntdata, locale ntdata] then
                              Data.Text.append tw (
-                             Data.Text.append (elemText n (date ntdata)) (
-                             Data.Text.append (elemText n (time ntdata)) (
+                             Data.Text.append (elemText n ((Prelude.reverse.date) ntdata)) (
+                             Data.Text.append (elemText n ((Prelude.reverse.time) ntdata)) (
                              Data.Text.append (if (Data.Text.null.elemText n) (locale ntdata) then pack "" 
-                                                else Data.Text.append (pack "＠.") (elemText n (locale ntdata))) (pack "\n"))))  -- createSchedule
+                                                else Data.Text.append (pack "＠.") (elemText n ((Prelude.reverse.locale) ntdata))) (pack "\n"))))  -- createSchedule
                              else makeTweet ntdata (n+1) mx tw)
 
 elemText :: Int -> [(Text, Int)] -> Text
