@@ -31,13 +31,23 @@ data NoticeData = NoticeData { notice :: Text
                              , locale :: [(Text,Int)]
                              } deriving (Show)
 
+data Week = Monday
+          | Tuesday
+          | Wednesday
+          | Thursday
+          | Friday
+          | Saturday
+          | Sunday
+          deriving (Show, Enum, Eq)
+
 calcwebdir = "/home/share/posts/posts-available/"
 srvcalcdir = "/srv/calc-web/posts"
+reminddir = "/usr/local/calc-tweet/reminder"
 
 monitoring :: PostData -> GetEvents -> IO PostData
 monitoring pd befdm= do
  threadDelay(3*30*1000*1000) -- 1minits
- postdata <- rtCheck pd-- monitoring retweeting
+ postdata <- (rtCheck pd >>= remindCheck)-- monitoring retweeting
  -- monitoring direct message
  directmessage <- getGetDM
  case directmessage of 
@@ -121,7 +131,8 @@ postTweet postdata tw = do
     Left err ->  makeNotice postdata (Prelude.tail tw)
     Right re -> do
      rttime <- setNoticeTime postdata ntdata (id_str re)
-     makeNotice (setPostData (Prelude.filter (((getsender_id.getmessage_create.Prelude.head) tw /=).sender_id) (sendtext postdata) ,calcweb postdata ,rttime))
+     makeNotice (setPostData (Prelude.filter (((getsender_id.getmessage_create.Prelude.head) tw /=).sender_id) (sendtext postdata) 
+                             ,calcweb postdata ,rttime))
                 (Prelude.tail tw) )
 
 printTweet :: PostData -> [GetMessageCreate] -> IO PostData
@@ -202,9 +213,10 @@ setNoticeTime pdt ndt res = loop 1 ((Prelude.maximum.Prelude.map (Prelude.maximu
        ctz     <- getCurrentTimeZone
        (ft,lt) <- getNum ':' ((fst.Prelude.head.Prelude.filter ((==n).snd)) tim) (25,61)
        (fd,ld) <- getNum '/' ((fst.Prelude.head.Prelude.filter ((==n).snd)) dat) (13,32)
+       year <- (\(y,m,d)->if fd < m then y+1 else y).toGregorian.localDay.zonedTimeToLocalTime<$>getZonedTime
        case makeTimeOfDayValid ft lt 0 of
         Nothing -> loop (n+1) mx [dat,tim] pdt 
-        Just t  -> case fromGregorianValid 2019 fd ld of
+        Just t  -> case fromGregorianValid year fd ld of
                     Nothing -> loop (n+1) mx [dat,tim] pdt
                     Just d  -> do
                      next <- loop (n+1) mx [dat,tim] pdt
@@ -223,17 +235,50 @@ getNum c text (f,l) = if Data.Text.null text then return (f,l) else case (elemIn
 rtCheck :: PostData -> IO PostData
 rtCheck postdata = do
  now <- zonedTimeToUTC<$>getZonedTime
- let rtlist = Prelude.filter ((<60*60).((`diffUTCTime` now).zonedTimeToUTC.snd)) (schedule postdata)
+ let rtlist = Prelude.filter ((<=15*60).((`diffUTCTime` now).zonedTimeToUTC.snd)) (schedule postdata)
  case Prelude.null rtlist of
   True  -> return postdata 
   False -> loop rtlist postdata
    where 
     loop rtl pdt = if Prelude.null rtl then
-                    return PostData{ sendtext = sendtext pdt
-                                   , calcweb  = calcweb pdt 
-                                   , schedule = Prelude.filter ((>60*60).((`diffUTCTime` now).zonedTimeToUTC.snd)) (schedule pdt)}
+                    return (setPostData ( sendtext pdt
+                                        , calcweb pdt 
+                                        , Prelude.filter ((>15*60).((`diffUTCTime` now).zonedTimeToUTC.snd)) (schedule pdt)))
                    else  
                     (do
                       postRT ((fst.Prelude.head) rtl) 
                       -- print ((fst.Prelude.head) rtl) -- for debug
                       loop (Prelude.tail rtl) pdt )
+
+remindCheck :: PostData -> IO PostData
+remindCheck postdata = do
+ today <- zonedTimeToLocalTime<$>getZonedTime
+ if (todHour.localTimeOfDay) today  /= 12 then return postdata else getDirectoryContents reminddir >>= loop postdata today
+  where
+   loop pd td file = if Prelude.null file then return pd
+    else (doesFileExist.Prelude.head) file >>= 
+     (\ch -> if not ch then loop pd td (Prelude.tail file)
+       else ( do
+        (getWeek, time, text)<-(\f->((read.unpack.Prelude.head) f
+                                    ,(Prelude.head.Prelude.tail) f
+                                    ,(Data.Text.unlines.Prelude.tail.Prelude.tail) f)).Data.Text.lines<$>T.readFile (Prelude.head file)
+        if dayToWeek td /= ((toEnum :: Int -> Week) getWeek) then loop pd td (Prelude.tail file)
+        else ( do
+         (ft,lt) <- getNum ':' time (25,61)
+         case makeTimeOfDayValid ft lt 0 of
+          Nothing  -> loop pd td (Prelude.tail file)
+          Just tod -> ( do
+           responce <- tweet text
+           postSlack text
+           ctz     <- getCurrentTimeZone
+           case responce of
+            Left err -> loop pd td (Prelude.tail file)
+            Right rs -> loop (setPostData ( sendtext pd
+                                          , calcweb pd   
+                                          , (id_str rs, ZonedTime { zonedTimeZone = ctz
+                                                                  , zonedTimeToLocalTime = td { localTimeOfDay = tod }}):(schedule pd))) td (Prelude.tail file)))))
+
+dayToWeek :: LocalTime -> Week
+dayToWeek day = do
+ let [y,m,d] = ((\(a,b,c) -> [a+(div((toInteger b)+12)15)-1,((toInteger b)+12-12*div(12+(toInteger b))15),toInteger c]).toGregorian.localDay) day
+ ((toEnum :: Int -> Week).fromIntegral) ((mod(d+div(26*(m+1))10+mod y 100+div(mod y 100)4+5*div y 100+div(div y 100)4+5)7)+1)

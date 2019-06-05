@@ -11,6 +11,7 @@ install:
 	@sudo mkdir -p ${INSCONFDIR}
 	@sudo mkdir -p ${INSCONFDIR}/temp
 	@sudo mkdir -p ${INSCONFDIR}/bot
+	@sudo mkdir -p ${INSCONFDIR}/reminder
 	@sudo cp conf/temp/* ${INSCONFDIR}/temp/ 
 	@read -p "Twitter:APIKey?:" APIKey; sudo sh -c "echo  '$${APIKey}' > ${INSCONFDIR}/bot/twitterbot.conf"
 	@read -p "Twitter:API secret key?:" APISecretKey; sudo sh -c "echo '$${APISecretKey}' >> ${INSCONFDIR}/bot/twitterbot.conf"
@@ -26,7 +27,7 @@ clean:
 	@sudo rm ${INSTALL_PATH}/calc-tweet
 	@sudo rm -rf ${INSCONFDIR}
 
-test:
+reinstall:
 	@stack build
 	@sudo install $(shell stack exec which calc-tweet) ${INSTALL_PATH}
 
