@@ -281,4 +281,4 @@ remindCheck postdata = do
 dayToWeek :: LocalTime -> Week
 dayToWeek day = do
  let [y,m,d] = ((\(a,b,c) -> [a+(div((toInteger b)+12)15)-1,((toInteger b)+12-12*div(12+(toInteger b))15),toInteger c]).toGregorian.localDay) day
- ((toEnum :: Int -> Week).fromIntegral) ((mod(d+div(26*(m+1))10+mod y 100+div(mod y 100)4+5*div y 100+div(div y 100)4+5)7)+1)
+ ((toEnum :: Int -> Week).fromIntegral) (mod(d+div(26*(m+1))10+mod y 100+div(mod y 100)4+5*div y 100+div(div y 100)4+5)7)
