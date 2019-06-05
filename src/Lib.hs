@@ -17,6 +17,7 @@ import System.Directory
 data PostData = PostData { sendtext :: [SendTL]
                          , calcweb :: [String] -- calc's post before
                          , schedule :: [(Text, ZonedTime)] -- post text (twid, time)
+                         , noon :: Bool
                          } deriving (Show)
 
 data SendTL = SendTL { parameter :: Text
@@ -77,14 +78,14 @@ getPermitFromIndex ind mcs = if Prelude.null ind then [] else (mcs!!Prelude.head
 makeNotice :: PostData -> [GetMessageCreate] -> IO PostData 
 makeNotice postdata tw 
  | Prelude.null tw        = return postdata 
- | Prelude.length tw > 20 = return (setPostData([], calcweb postdata, schedule postdata)) 
+ | Prelude.length tw > 20 = return (setPostData([], calcweb postdata, schedule postdata, noon postdata)) 
  | otherwise              = 
   case (unpack.Prelude.head.Prelude.head.Prelude.map Data.Text.words.Data.Text.lines.gettext.getmessage_data.getmessage_create.Prelude.head) tw of
    "$notice"        -> nextMakeNotice postdata tw "notice"
    "$time"          -> nextMakeNotice postdata tw "time"
    "$date"          -> nextMakeNotice postdata tw "date"
    "$locale"        -> nextMakeNotice postdata tw "locale"
-   "$clear"         -> makeNotice (setPostData ([], calcweb postdata, schedule postdata)) (Prelude.tail tw)
+   "$clear"         -> makeNotice (setPostData ([], calcweb postdata, schedule postdata, noon postdata)) (Prelude.tail tw)
    "$post"          -> postTweet postdata tw
    "$print"         -> printTweet postdata tw
    "$post-calc-web" -> calcWebPost postdata tw
@@ -102,18 +103,18 @@ numpert = read.unpack.Data.Text.tail.Prelude.head.Prelude.tail.Data.Text.words.d
 nextMakeNotice :: PostData -> [GetMessageCreate] -> String -> IO PostData
 nextMakeNotice pd tw par = 
  case (Prelude.length.Data.Text.words.gettext.getmessage_data.getmessage_create.Prelude.head) tw of
-  2 -> makeNotice (setPostData (setSendTL (pack par, texttwopert tw, idpert tw, 1):sendtext pd, calcweb pd, schedule pd)) (Prelude.tail tw)
+  2 -> makeNotice (setPostData (setSendTL (pack par, texttwopert tw, idpert tw, 1):sendtext pd, calcweb pd, schedule pd, noon pd)) (Prelude.tail tw)
   _ -> makeNotice ( if (Data.Text.head.Prelude.head.Prelude.tail.Data.Text.words.gettext.getmessage_data.getmessage_create.Prelude.head) tw == '-' then
-                     setPostData (setSendTL (pack par, textothpert tw, idpert tw, numpert tw):sendtext pd, calcweb pd, schedule pd)
+                     setPostData (setSendTL (pack par, textothpert tw, idpert tw, numpert tw):sendtext pd, calcweb pd, schedule pd, noon pd)
                     else 
-                     setPostData (setSendTL (pack par, texttwopert tw, idpert tw, 1):sendtext pd, calcweb pd, schedule pd) )
+                     setPostData (setSendTL (pack par, texttwopert tw, idpert tw, 1):sendtext pd, calcweb pd, schedule pd, noon pd) )
                   (Prelude.tail tw)
 
 setSendTL :: (Text,Text,Text,Int) -> SendTL
 setSendTL (param, sent, sender, n) = SendTL {parameter = param, sentence = sent, sender_id = sender, num=n}
 
-setPostData :: ([SendTL],[String],[(Text,ZonedTime)]) -> PostData
-setPostData (sendtx, web, sche) = PostData { sendtext = sendtx, calcweb = web , schedule = sche}
+setPostData :: ([SendTL],[String],[(Text,ZonedTime)], Bool) -> PostData
+setPostData (sendtx, web, sche, non) = PostData { sendtext = sendtx, calcweb = web , schedule = sche, noon = non}
 
 postTweet :: PostData -> [GetMessageCreate] -> IO PostData
 postTweet postdata tw = do 
@@ -131,7 +132,7 @@ postTweet postdata tw = do
     Right re -> do
      rttime <- setNoticeTime postdata ntdata (id_str re)
      makeNotice (setPostData (Prelude.filter (((getsender_id.getmessage_create.Prelude.head) tw /=).sender_id) (sendtext postdata) 
-                             ,calcweb postdata ,rttime))
+                             ,calcweb postdata ,rttime, noon postdata))
                 (Prelude.tail tw) )
 
 printTweet :: PostData -> [GetMessageCreate] -> IO PostData
@@ -150,11 +151,11 @@ calcWebPost :: PostData -> [GetMessageCreate] -> IO PostData
 calcWebPost postdata tw = do
  nowpost <- getDirectoryContents srvcalcdir
  let newarticle = Prelude.filter (\x->x `notElem` (calcweb postdata)) nowpost
- if Prelude.null newarticle then makeNotice (setPostData (sendtext postdata, calcweb postdata, schedule postdata)) (Prelude.tail tw)
+ if Prelude.null newarticle then makeNotice (setPostData (sendtext postdata, calcweb postdata, schedule postdata, noon postdata)) (Prelude.tail tw)
  else loop newarticle nowpost
   where
    loop :: [String] -> [String] -> IO PostData
-   loop na np = if Prelude.null na then makeNotice (setPostData (sendtext postdata, np, schedule postdata)) (Prelude.tail tw)
+   loop na np = if Prelude.null na then makeNotice (setPostData (sendtext postdata, np, schedule postdata, noon postdata)) (Prelude.tail tw)
                 else ( do
                  article <- Data.Text.lines<$>T.readFile (calcwebdir ++ ((Prelude.takeWhile (/= '.')).Prelude.head) na ++ ".md")
                  let title  = Data.Text.drop 7 (article!!1)
@@ -242,7 +243,8 @@ rtCheck postdata = do
     loop rtl pdt = if Prelude.null rtl then
                     return (setPostData ( sendtext pdt
                                         , calcweb pdt 
-                                        , Prelude.filter ((>15*60).((`diffUTCTime` now).zonedTimeToUTC.snd)) (schedule pdt)))
+                                        , Prelude.filter ((>15*60).((`diffUTCTime` now).zonedTimeToUTC.snd)) (schedule pdt)
+                                        , noon pdt))
                    else  
                     (do
                       postRT ((fst.Prelude.head) rtl) 
@@ -252,9 +254,12 @@ rtCheck postdata = do
 remindCheck :: PostData -> IO PostData
 remindCheck postdata = do
  today <- zonedTimeToLocalTime<$>getZonedTime
- if (todHour.localTimeOfDay) today  /= 12 then return postdata else getDirectoryContents reminddir >>= loop postdata today
+ case divMod ((todHour.localTimeOfDay) today) 12 of
+  (0,_)  -> return postdata { noon = False }
+  (1,0)  -> getDirectoryContents reminddir >>= loop postdata { noon = True } today  
+  (1,_)  -> return postdata { noon = True  }
   where
-   loop pd td file = if Prelude.null file then return pd
+   loop pd td file = if Prelude.null file || noon pd  then return pd { noon = True }
     else (doesFileExist.Prelude.head) file >>= 
      (\ch -> if not ch then loop pd td (Prelude.tail file)
        else ( do
@@ -275,7 +280,8 @@ remindCheck postdata = do
             Right rs -> loop (setPostData ( sendtext pd
                                           , calcweb pd   
                                           , (id_str rs, ZonedTime { zonedTimeZone = ctz
-                                                                  , zonedTimeToLocalTime = td { localTimeOfDay = tod }}):(schedule pd))) td (Prelude.tail file)))))
+                                                                  , zonedTimeToLocalTime = td { localTimeOfDay = tod }}):(schedule pd)
+                                          , True )) td (Prelude.tail file)))))
 
 dayToWeek :: LocalTime -> Week
 dayToWeek day = do
