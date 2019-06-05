@@ -67,7 +67,7 @@ monitoring pd befdm= do
                  Nothing -> monitoring postdata dm
                  Just n  -> do
                   let puser = permissionIndexes ((Prelude.map (getsender_id.getmessage_create)) ((Prelude.take n.getevents) dm)) permissionuser 0
-                  notices <- makeNotice postdata ((getPermitFromIndex puser.Prelude.take n.getevents) dm)
+                  notices <- makeNotice postdata ((Prelude.reverse.getPermitFromIndex puser.Prelude.take n.getevents) dm)
                   monitoring notices dm 
 
 permissionIndexes :: [Text] -> [User] -> Int -> [Int]
@@ -122,7 +122,7 @@ setPostData (sendtx, web, sche, non) = PostData { sendtext = sendtx, calcweb = w
 
 postTweet :: PostData -> [GetMessageCreate] -> PostType -> IO PostData
 postTweet postdata tw pt= do 
- let ntdata = createNoticeData ((Prelude.reverse.Prelude.filter (((getsender_id.getmessage_create.Prelude.head) tw ==).sender_id)) (sendtext postdata)) 
+ let ntdata = createNoticeData ((Prelude.reverse.Prelude.filter (((getsender_id.getmessage_create.Prelude.head) tw ==).sender_id)) (sendtext postdata))
                                NoticeData{notice = pack "", date = [], time = [], locale =[]}
  if (Data.Text.null.notice) ntdata then makeNotice postdata (Prelude.tail tw)
  else (do
