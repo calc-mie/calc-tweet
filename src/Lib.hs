@@ -41,13 +41,17 @@ data Week = Monday
           | Sunday
           deriving (Show, Enum, Eq)
 
+data PostType = TL
+              | DM
+              deriving (Eq)
+
 calcwebdir = "/home/share/posts/posts-available/"
 srvcalcdir = "/srv/calc-web/posts"
 reminddir = "/usr/local/calc-tweet/reminder"
 
 monitoring :: PostData -> GetEvents -> IO PostData
 monitoring pd befdm= do
- threadDelay(3*30*1000*1000) -- 1minits
+ threadDelay(3*30*1000*1000)
  postdata <- (rtCheck pd >>= remindCheck)-- monitoring retweeting
  -- monitoring direct message
  directmessage <- getGetDM
@@ -63,7 +67,7 @@ monitoring pd befdm= do
                  Nothing -> monitoring postdata dm
                  Just n  -> do
                   let puser = permissionIndexes ((Prelude.map (getsender_id.getmessage_create)) ((Prelude.take n.getevents) dm)) permissionuser 0
-                  notices <- makeNotice postdata ((Prelude.reverse.getPermitFromIndex puser.Prelude.take n.getevents) dm)
+                  notices <- makeNotice postdata ((getPermitFromIndex puser.Prelude.take n.getevents) dm)
                   monitoring notices dm 
 
 permissionIndexes :: [Text] -> [User] -> Int -> [Int]
@@ -86,8 +90,8 @@ makeNotice postdata tw
    "$date"          -> nextMakeNotice postdata tw "date"
    "$locale"        -> nextMakeNotice postdata tw "locale"
    "$clear"         -> makeNotice (setPostData ([], calcweb postdata, schedule postdata, noon postdata)) (Prelude.tail tw)
-   "$post"          -> postTweet postdata tw
-   "$print"         -> printTweet postdata tw
+   "$post"          -> postTweet postdata tw TL
+   "$print"         -> postTweet postdata tw DM
    "$post-calc-web" -> calcWebPost postdata tw
    "$useradd"       -> userAdd postdata tw
    _                -> makeNotice postdata (Prelude.tail tw)
@@ -116,8 +120,8 @@ setSendTL (param, sent, sender, n) = SendTL {parameter = param, sentence = sent,
 setPostData :: ([SendTL],[String],[(Text,ZonedTime)], Bool) -> PostData
 setPostData (sendtx, web, sche, non) = PostData { sendtext = sendtx, calcweb = web , schedule = sche, noon = non}
 
-postTweet :: PostData -> [GetMessageCreate] -> IO PostData
-postTweet postdata tw = do 
+postTweet :: PostData -> [GetMessageCreate] -> PostType -> IO PostData
+postTweet postdata tw pt= do 
  let ntdata = createNoticeData (Prelude.filter (((getsender_id.getmessage_create.Prelude.head) tw ==).sender_id) (sendtext postdata)) 
                                NoticeData{notice = pack "", date = [], time = [], locale =[]}
  if (Data.Text.null.notice) ntdata then makeNotice postdata (Prelude.tail tw)
@@ -125,27 +129,20 @@ postTweet postdata tw = do
    posttw <- T.readFile noticetempconf
    let posttx = makeTweet ntdata 1 ((Prelude.maximum.Prelude.map (Prelude.maximum.Prelude.map snd.((pack "null",0):)))[date ntdata, time ntdata, locale ntdata]) 
                                                                  (Data.Text.append posttw (Data.Text.append (notice ntdata) (pack "\n")))
-   response <- tweet posttx
-   postSlack posttx
-   case response of
-    Left err ->  makeNotice postdata (Prelude.tail tw)
-    Right re -> do
-     rttime <- setNoticeTime postdata ntdata (id_str re)
-     makeNotice (setPostData (Prelude.filter (((getsender_id.getmessage_create.Prelude.head) tw /=).sender_id) (sendtext postdata) 
-                             ,calcweb postdata ,rttime, noon postdata))
-                (Prelude.tail tw) )
-
-printTweet :: PostData -> [GetMessageCreate] -> IO PostData
-printTweet postdata tw = do 
- let ntdata = createNoticeData (Prelude.filter (((getsender_id.getmessage_create.Prelude.head) tw ==).sender_id) (sendtext postdata)) 
-                               NoticeData{notice = pack "", date = [], time = [], locale =[]}
- if (Data.Text.null.notice) ntdata then makeNotice postdata (Prelude.tail tw)
- else (do
-   posttw <- T.readFile noticetempconf
-   let posttx = makeTweet ntdata 1 ((Prelude.maximum.Prelude.map (Prelude.maximum.Prelude.map snd.((pack "null",0):)))[date ntdata, time ntdata, locale ntdata]) 
-                                                                 (Data.Text.append posttw (Data.Text.append (notice ntdata) (pack "\n")))
-   postDM posttx ((getsender_id.getmessage_create.Prelude.head) tw)
-   makeNotice postdata (Prelude.tail tw) )
+   case pt of
+    DM -> ( do
+     postDM posttx ((getsender_id.getmessage_create.Prelude.head) tw)
+     makeNotice postdata (Prelude.tail tw) )
+    TL -> ( do 
+     response <- tweet posttx
+     postSlack posttx
+     case response of
+      Left err ->  makeNotice postdata (Prelude.tail tw)
+      Right re -> do
+       rttime <- setNoticeTime postdata ntdata (id_str re)
+       makeNotice (setPostData (Prelude.filter (((getsender_id.getmessage_create.Prelude.head) tw /=).sender_id) (sendtext postdata) 
+                               ,calcweb postdata ,rttime, noon postdata))
+                  (Prelude.tail tw) ))
 
 calcWebPost :: PostData -> [GetMessageCreate] -> IO PostData
 calcWebPost postdata tw = do
@@ -248,7 +245,6 @@ rtCheck postdata = do
                    else  
                     (do
                       postRT ((fst.Prelude.head) rtl) 
-                      -- print ((fst.Prelude.head) rtl) -- for debug
                       loop (Prelude.tail rtl) pdt )
 
 remindCheck :: PostData -> IO PostData
@@ -285,5 +281,5 @@ remindCheck postdata = do
 
 dayToWeek :: LocalTime -> Week
 dayToWeek day = do
- let [y,m,d] = ((\(a,b,c) -> [a+(div((toInteger b)+12)15)-1,((toInteger b)+12-12*div(12+(toInteger b))15),toInteger c]).toGregorian.localDay) day
+ let [y,m,d] = ((\(a,b,c) -> [a+(div(toInteger b+12)15)-1,(toInteger b+12-12*div(12+toInteger b)15),toInteger c]).toGregorian.localDay) day
  ((toEnum :: Int -> Week).fromIntegral) (mod(d+div(26*(m+1))10+mod y 100+div(mod y 100)4+5*div y 100+div(div y 100)4+5)7)
