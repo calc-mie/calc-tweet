@@ -190,7 +190,7 @@ makeTweet ntdata n mx tw = if n>mx then tw else
                              else makeTweet ntdata (n+1) mx tw)
 
 elemText :: Int -> [(Text, Int)] -> Text
-elemText n text = if (n `elem` Prelude.map snd text) || (not.Prelude.any ((==n).snd)) text then pack "" 
+elemText n text = if (n `notElem` Prelude.map snd text) then pack "" 
                         else Data.Text.append ((fst.Prelude.head.Prelude.filter ((==n).snd)) text) (pack " ")
 
 userAdd :: PostData -> [GetMessageCreate] -> IO PostData
