@@ -56,7 +56,6 @@ monitoring pd befdm= do
                then monitoring postdata dm 
               else do
                pusr <- (T.readFile permitconf >>= getUser.Data.Text.intercalate (pack ",").Data.Text.lines)
-               print pusr
                case pusr of
                 Left err             -> error err
                 Right permissionuser -> case elemIndex ((getcreated_timestamp . Prelude.head . getevents) befdm) (Prelude.map getcreated_timestamp (getevents dm)) of 
