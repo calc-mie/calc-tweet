@@ -31,3 +31,5 @@ reinstall:
 	@stack build
 	@sudo install $(shell stack exec which calc-tweet) ${INSTALL_PATH}
 
+test:
+	@stack test

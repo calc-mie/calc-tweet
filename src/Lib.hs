@@ -195,7 +195,7 @@ rtCheck postdata = do
 remindCheck :: (Text -> PostData -> [GetMessageCreate] -> IO Text) ->  PostData -> IO PostData
 remindCheck ptfunc postdata = do
  today <- zonedTimeToLocalTime<$>getZonedTime
- case divMod ((todHour.localTimeOfDay) today) 14 of
+ case divMod ((todHour.localTimeOfDay) today) 12 of
   (0,_)  -> return postdata { noon = False }
   (1,0)  -> getDirectoryContents reminddir >>= (\fs -> loop postdata today ptfunc (Prelude.map (reminddir++) fs))
   (1,_)  -> return postdata { noon = True }

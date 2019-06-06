@@ -16,11 +16,11 @@ import System.Directory
 
 main = do
  -- calcweb-post
- oldcalcweb <- getDirectoryContents srvcalcdir
+ -- oldcalcweb <- getDirectoryContents srvcalcdir
  -- main
  direct_message <- getGetDM
  case direct_message of
-  Right dm -> monitoring (setPostData ([],oldcalcweb,[], False)) dm >> putStrLn "fin"
+  Right dm -> monitoring (setPostData ([],[],[], False)) dm >> putStrLn "fin"
 
 monitoring :: PostData -> GetEvents -> IO PostData
 monitoring pd befdm= do
