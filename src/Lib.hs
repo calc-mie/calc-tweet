@@ -22,7 +22,7 @@ data SendTL = SendTL { parameter :: Text
                      , num :: Int
                      } deriving (Show)
 
-data NoticeData = NoticeData { notice :: Text
+data NoticeData = NoticeData { notice :: [Text]
                              , date :: [(Text,Int)]
                              , time :: [(Text,Int)]
                              , locale :: [(Text,Int)]
@@ -81,12 +81,12 @@ setPostData (sendtx, web, sche, non) = PostData { sendtext = sendtx, calcweb = w
 postTweet :: PostData -> [GetMessageCreate] -> (Text -> PostData -> [GetMessageCreate] -> IO Text) -> IO PostData
 postTweet postdata tw ptfunc= do 
  let ntdata = createNoticeData ((Prelude.filter (((getsender_id.getmessage_create.Prelude.head) tw ==).sender_id)) (sendtext postdata))
-                               NoticeData{notice = pack "", date = [], time = [], locale =[]}
- if (Data.Text.null.notice) ntdata then return postdata
+                               NoticeData{notice = [], date = [], time = [], locale =[]}
+ if (Prelude.null.notice) ntdata then return postdata
  else (do
   posttw <- T.readFile noticetempconf
   let posttx = makeTweet ntdata 1 ((Prelude.maximum.Prelude.map (Prelude.maximum.Prelude.map snd.((pack "null",0):)))[date ntdata, time ntdata, locale ntdata]) 
-                                                                (Data.Text.append posttw (Data.Text.append (notice ntdata) (pack "\n")))
+                                                                (Data.Text.append posttw (Data.Text.append ((Prelude.head.notice) ntdata) (pack "\n")))
   postid_str <- ptfunc posttx postdata tw
   if Data.Text.null postid_str then return postdata
   else setNoticeTime  postdata ntdata postid_str >>=
@@ -115,7 +115,7 @@ calcWebPost postdata tw ptfunc= do
 createNoticeData :: [SendTL] -> NoticeData -> NoticeData
 createNoticeData sendtl ntdata = if Prelude.null sendtl then ntdata else createNoticeData (Prelude.tail sendtl) (
  case (unpack.parameter.Prelude.head) sendtl of
-  "notice" -> NoticeData{notice = (sentence.Prelude.head) sendtl, date = date ntdata ,time = time ntdata,locale = locale ntdata}
+  "notice" -> NoticeData{notice = (sentence.Prelude.head) sendtl:notice ntdata, date = date ntdata ,time = time ntdata,locale = locale ntdata}
   "date"   -> NoticeData{notice = notice ntdata, date = addND (Prelude.head sendtl) (date ntdata), time = time ntdata, locale = locale ntdata}
   "time"   -> NoticeData{notice = notice ntdata, date = date ntdata, time = addND (Prelude.head sendtl) (time ntdata), locale = locale ntdata}
   "locale" -> NoticeData{notice = notice ntdata, date = date ntdata, time = time ntdata, locale = addND (Prelude.head sendtl) (locale ntdata)}
@@ -128,10 +128,10 @@ makeTweet :: NoticeData -> Int -> Int -> Text -> Text
 makeTweet ntdata n mx tw = if n>mx then tw else 
  makeTweet ntdata (n+1) mx (if n `elem` Prelude.concatMap (Prelude.map snd) [date ntdata, time ntdata, locale ntdata] then
                              Data.Text.append tw (
-                             Data.Text.append (elemText n ((Prelude.reverse.date) ntdata)) (
-                             Data.Text.append (elemText n ((Prelude.reverse.time) ntdata)) (
+                             Data.Text.append (elemText n (date ntdata)) (
+                             Data.Text.append (elemText n (time ntdata)) (
                              Data.Text.append (if (Data.Text.null.elemText n) (locale ntdata) then pack "" 
-                                                else Data.Text.append (pack "＠.") (elemText n ((Prelude.reverse.locale) ntdata))) (pack "\n"))))  -- createSchedule
+                                                else Data.Text.append (pack "＠.") (elemText n (locale ntdata))) (pack "\n"))))  -- createSchedule
                              else makeTweet ntdata (n+1) mx tw)
 
 elemText :: Int -> [(Text, Int)] -> Text
