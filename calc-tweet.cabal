@@ -57,6 +57,7 @@ executable calc-tweet
     , calc-tweet
     , text
     , directory
+    , time
   default-language: Haskell2010
 
 test-suite calc-tweet-test

@@ -1,8 +1,4 @@
-module Lib ( calcwebdir
-           , srvcalcdir
-           , PostData (..)
-           , monitoring
-           , setPostData)where
+module Lib where
 
 import SlackAPI
 import TwitterAPI
@@ -49,26 +45,6 @@ calcwebdir = "/home/share/posts/posts-available/"
 srvcalcdir = "/srv/calc-web/posts"
 reminddir = "/usr/local/calc-tweet/reminder"
 
-monitoring :: PostData -> GetEvents -> IO PostData
-monitoring pd befdm= do
- threadDelay(3*30*1000*1000)
- postdata <- (rtCheck pd >>= remindCheck)-- monitoring retweeting
- -- monitoring direct message
- directmessage <- getGetDM
- case directmessage of 
-  Left err -> error err
-  Right dm -> if (getcreated_timestamp . Prelude.head . getevents) befdm == (getcreated_timestamp . Prelude.head . getevents) dm 
-               then monitoring postdata dm 
-              else do
-               pusr <- (T.readFile permitconf >>= getUser.Data.Text.intercalate (pack ",").Data.Text.lines)
-               case pusr of
-                Left err             -> error err
-                Right permissionuser -> case elemIndex ((getcreated_timestamp . Prelude.head . getevents) befdm) (Prelude.map getcreated_timestamp (getevents dm)) of 
-                 Nothing -> monitoring postdata dm
-                 Just n  -> do
-                  let puser = permissionIndexes ((Prelude.map (getsender_id.getmessage_create)) ((Prelude.take n.getevents) dm)) permissionuser 0
-                  notices <- makeNotice postdata ((Prelude.reverse.getPermitFromIndex puser.Prelude.take n.getevents) dm)
-                  monitoring notices dm 
 
 permissionIndexes :: [Text] -> [User] -> Int -> [Int]
 permissionIndexes dm puser index 
@@ -79,23 +55,6 @@ permissionIndexes dm puser index
 getPermitFromIndex :: [Int] -> [GetMessageCreate] -> [GetMessageCreate]
 getPermitFromIndex ind mcs = if Prelude.null ind then [] else (mcs!!Prelude.head ind):getPermitFromIndex (Prelude.tail ind) mcs
 
-makeNotice :: PostData -> [GetMessageCreate] -> IO PostData 
-makeNotice postdata tw 
- | Prelude.null tw        = return postdata 
- | Prelude.length tw > 20 = return (setPostData([], calcweb postdata, schedule postdata, noon postdata)) 
- | otherwise              = 
-  case (unpack.Prelude.head.Prelude.head.Prelude.map Data.Text.words.Data.Text.lines.gettext.getmessage_data.getmessage_create.Prelude.head) tw of
-   "$notice"        -> nextMakeNotice postdata tw "notice"
-   "$time"          -> nextMakeNotice postdata tw "time"
-   "$date"          -> nextMakeNotice postdata tw "date"
-   "$locale"        -> nextMakeNotice postdata tw "locale"
-   "$clear"         -> makeNotice (setPostData ([], calcweb postdata, schedule postdata, noon postdata)) (Prelude.tail tw)
-   "$post"          -> postTweet postdata tw TL
-   "$print"         -> postTweet postdata tw DM
-   "$post-calc-web" -> calcWebPost postdata tw
-   "$useradd"       -> userAdd postdata tw
-   _                -> makeNotice postdata (Prelude.tail tw)
-
 dmTotext = gettext.getmessage_data.getmessage_create.Prelude.head
 textTolistlisttext = Prelude.map Data.Text.words.Data.Text.lines
 listlisttextTotext = Data.Text.init.Data.Text.unlines.Prelude.map Data.Text.unwords
@@ -104,15 +63,14 @@ textothpert = listlisttextTotext.(\n->(Prelude.tail.Prelude.tail.Prelude.head)n:
 idpert = getsender_id.getmessage_create.Prelude.head
 numpert = read.unpack.Data.Text.tail.Prelude.head.Prelude.tail.Data.Text.words.dmTotext
 
-nextMakeNotice :: PostData -> [GetMessageCreate] -> String -> IO PostData
+nextMakeNotice :: PostData -> [GetMessageCreate] -> String -> PostData
 nextMakeNotice pd tw par = 
  case (Prelude.length.Data.Text.words.gettext.getmessage_data.getmessage_create.Prelude.head) tw of
-  2 -> makeNotice (setPostData (setSendTL (pack par, texttwopert tw, idpert tw, 1):sendtext pd, calcweb pd, schedule pd, noon pd)) (Prelude.tail tw)
-  _ -> makeNotice ( if (Data.Text.head.Prelude.head.Prelude.tail.Data.Text.words.gettext.getmessage_data.getmessage_create.Prelude.head) tw == '-' then
+  2 -> (setPostData (setSendTL (pack par, texttwopert tw, idpert tw, 1):sendtext pd, calcweb pd, schedule pd, noon pd))
+  _ -> ( if (Data.Text.head.Prelude.head.Prelude.tail.Data.Text.words.gettext.getmessage_data.getmessage_create.Prelude.head) tw == '-' then
                      setPostData (setSendTL (pack par, textothpert tw, idpert tw, numpert tw):sendtext pd, calcweb pd, schedule pd, noon pd)
                     else 
                      setPostData (setSendTL (pack par, texttwopert tw, idpert tw, 1):sendtext pd, calcweb pd, schedule pd, noon pd) )
-                  (Prelude.tail tw)
 
 setSendTL :: (Text,Text,Text,Int) -> SendTL
 setSendTL (param, sent, sender, n) = SendTL {parameter = param, sentence = sent, sender_id = sender, num=n}
@@ -120,39 +78,30 @@ setSendTL (param, sent, sender, n) = SendTL {parameter = param, sentence = sent,
 setPostData :: ([SendTL],[String],[(Text,ZonedTime)], Bool) -> PostData
 setPostData (sendtx, web, sche, non) = PostData { sendtext = sendtx, calcweb = web , schedule = sche, noon = non}
 
-postTweet :: PostData -> [GetMessageCreate] -> PostType -> IO PostData
-postTweet postdata tw pt= do 
- let ntdata = createNoticeData ((Prelude.reverse.Prelude.filter (((getsender_id.getmessage_create.Prelude.head) tw ==).sender_id)) (sendtext postdata))
+postTweet :: PostData -> [GetMessageCreate] -> (Text -> PostData -> [GetMessageCreate] -> IO Text) -> IO PostData
+postTweet postdata tw ptfunc= do 
+ let ntdata = createNoticeData ((Prelude.filter (((getsender_id.getmessage_create.Prelude.head) tw ==).sender_id)) (sendtext postdata))
                                NoticeData{notice = pack "", date = [], time = [], locale =[]}
- if (Data.Text.null.notice) ntdata then makeNotice postdata (Prelude.tail tw)
+ if (Data.Text.null.notice) ntdata then return postdata
  else (do
-   posttw <- T.readFile noticetempconf
-   let posttx = makeTweet ntdata 1 ((Prelude.maximum.Prelude.map (Prelude.maximum.Prelude.map snd.((pack "null",0):)))[date ntdata, time ntdata, locale ntdata]) 
-                                                                 (Data.Text.append posttw (Data.Text.append (notice ntdata) (pack "\n")))
-   case pt of
-    DM -> ( do
-     postDM posttx ((getsender_id.getmessage_create.Prelude.head) tw)
-     makeNotice postdata (Prelude.tail tw) )
-    TL -> ( do 
-     response <- tweet posttx
-     postSlack posttx
-     case response of
-      Left err ->  makeNotice postdata (Prelude.tail tw)
-      Right re -> do
-       rttime <- setNoticeTime postdata ntdata (id_str re)
-       makeNotice (setPostData (Prelude.filter (((getsender_id.getmessage_create.Prelude.head) tw /=).sender_id) (sendtext postdata) 
-                               ,calcweb postdata ,rttime, noon postdata))
-                  (Prelude.tail tw) ))
+  posttw <- T.readFile noticetempconf
+  let posttx = makeTweet ntdata 1 ((Prelude.maximum.Prelude.map (Prelude.maximum.Prelude.map snd.((pack "null",0):)))[date ntdata, time ntdata, locale ntdata]) 
+                                                                (Data.Text.append posttw (Data.Text.append (notice ntdata) (pack "\n")))
+  postid_str <- ptfunc posttx postdata tw
+  if Data.Text.null postid_str then return postdata
+  else setNoticeTime  postdata ntdata postid_str >>=
+   (\r->return postdata { sendtext = Prelude.filter (((getsender_id.getmessage_create.Prelude.head) tw /=).sender_id) (sendtext postdata) 
+                        , schedule = r}) )
 
-calcWebPost :: PostData -> [GetMessageCreate] -> IO PostData
-calcWebPost postdata tw = do
+calcWebPost :: PostData -> [GetMessageCreate] -> (Text -> PostData -> [GetMessageCreate] -> IO Text) -> IO PostData
+calcWebPost postdata tw ptfunc= do
  nowpost <- getDirectoryContents srvcalcdir
  let newarticle = Prelude.filter (\x->x `notElem` (calcweb postdata)) nowpost
- if Prelude.null newarticle then makeNotice (setPostData (sendtext postdata, calcweb postdata, schedule postdata, noon postdata)) (Prelude.tail tw)
+ if Prelude.null newarticle then return postdata
  else loop newarticle nowpost
   where
    loop :: [String] -> [String] -> IO PostData
-   loop na np = if Prelude.null na then makeNotice (setPostData (sendtext postdata, np, schedule postdata, noon postdata)) (Prelude.tail tw)
+   loop na np = if Prelude.null na then return postdata { calcweb = np }
                 else ( do
                  article <- Data.Text.lines<$>T.readFile (calcwebdir ++ ((Prelude.takeWhile (/= '.')).Prelude.head) na ++ ".md")
                  let title  = Data.Text.drop 7 (article!!1)
@@ -160,8 +109,7 @@ calcWebPost postdata tw = do
                      webtx  =  pack $   unpack author ++ "\n" 
                                      ++ unpack title ++ "について書きました。\n url: https://calc.mie.jp/posts/" 
                                      ++ Prelude.head na
-                 tweet webtx
-                 postSlack webtx
+                 ptfunc webtx postdata tw
                  loop (Prelude.tail na) np )
   
 createNoticeData :: [SendTL] -> NoticeData -> NoticeData
@@ -174,7 +122,7 @@ createNoticeData sendtl ntdata = if Prelude.null sendtl then ntdata else createN
  )
  
 addND :: SendTL -> [(Text,Int)] -> [(Text,Int)]
-addND ad list = if num ad `elem` Prelude.map snd list then list else (sentence ad,num ad):list
+addND ad list = (sentence ad,num ad):list
 
 makeTweet :: NoticeData -> Int -> Int -> Text -> Text
 makeTweet ntdata n mx tw = if n>mx then tw else 
@@ -188,17 +136,14 @@ makeTweet ntdata n mx tw = if n>mx then tw else
 
 elemText :: Int -> [(Text, Int)] -> Text
 elemText n text = if (n `notElem` Prelude.map snd text) then pack "" 
-                        else Data.Text.append ((fst.Prelude.head.Prelude.filter ((==n).snd)) text) (pack " ")
+                        else Data.Text.append ((fst.Prelude.last.Prelude.filter ((==n).snd)) text) (pack " ")
 
 userAdd :: PostData -> [GetMessageCreate] -> IO PostData
 userAdd postdata tw = do
  let user = ((Data.Text.drop 9.gettext.getmessage_data.getmessage_create.Prelude.head) tw)
  permituser <- Data.Text.lines<$>T.readFile permitconf
- if user `notElem` permituser then 
-  (do
-   T.appendFile permitconf user 
-   makeNotice postdata (Prelude.tail tw) )
- else makeNotice postdata (Prelude.tail tw) 
+ if user `notElem` permituser then (T.appendFile permitconf user >> return postdata)
+ else return postdata 
 
 setNoticeTime :: PostData -> NoticeData -> Text -> IO [(Text,ZonedTime)]
 setNoticeTime pdt ndt res = loop 1 ((Prelude.maximum.Prelude.map (Prelude.maximum.Prelude.map snd.((pack "null",0):)))[date ndt, time ndt]) [date ndt, time ndt] pdt
@@ -247,37 +192,33 @@ rtCheck postdata = do
                       postRT ((fst.Prelude.head) rtl) 
                       loop (Prelude.tail rtl) pdt )
 
-remindCheck :: PostData -> IO PostData
-remindCheck postdata = do
+remindCheck :: (Text -> PostData -> [GetMessageCreate] -> IO Text) ->  PostData -> IO PostData
+remindCheck ptfunc postdata = do
  today <- zonedTimeToLocalTime<$>getZonedTime
  case divMod ((todHour.localTimeOfDay) today) 12 of
   (0,_)  -> return postdata { noon = False }
-  (1,0)  -> getDirectoryContents reminddir >>= loop postdata { noon = True } today  
+  (1,0)  -> getDirectoryContents reminddir >>= (\fs -> loop postdata today ptfunc fs)
   (1,_)  -> return postdata { noon = True  }
   where
-   loop pd td file = if Prelude.null file || noon pd  then return pd { noon = True }
+   loop :: PostData -> LocalTime -> (Text -> PostData -> [GetMessageCreate] -> IO Text) -> [FilePath] -> IO PostData
+   loop pd td ptfunc file = if Prelude.null file || noon pd  then return pd { noon = True }
     else (doesFileExist.Prelude.head) file >>= 
-     (\ch -> if not ch then loop pd td (Prelude.tail file)
+     (\ch -> if not ch then loop pd td ptfunc (Prelude.tail file)
        else ( do
         (getWeek, time, text)<-(\f->((read.unpack.Prelude.head) f
                                     ,(Prelude.head.Prelude.tail) f
                                     ,(Data.Text.unlines.Prelude.tail.Prelude.tail) f)).Data.Text.lines<$>T.readFile (Prelude.head file)
-        if dayToWeek td /= ((toEnum :: Int -> Week) getWeek) then loop pd td (Prelude.tail file)
+        if dayToWeek td /= ((toEnum :: Int -> Week) getWeek) then loop pd td ptfunc (Prelude.tail file)
         else ( do
          (ft,lt) <- getNum ':' time (25,61)
          case makeTimeOfDayValid ft lt 0 of
-          Nothing  -> loop pd td (Prelude.tail file)
+          Nothing  -> loop pd td ptfunc (Prelude.tail file)
           Just tod -> ( do
-           responce <- tweet text
-           postSlack text
-           ctz     <- getCurrentTimeZone
-           case responce of
-            Left err -> loop pd td (Prelude.tail file)
-            Right rs -> loop (setPostData ( sendtext pd
-                                          , calcweb pd   
-                                          , (id_str rs, ZonedTime { zonedTimeZone = ctz
-                                                                  , zonedTimeToLocalTime = td { localTimeOfDay = tod }}):(schedule pd)
-                                          , True )) td (Prelude.tail file)))))
+           postid_str <- ptfunc text pd []
+           ctz <- getCurrentTimeZone
+           if Data.Text.null postid_str then loop pd td ptfunc (Prelude.tail file)
+           else loop pd{schedule = (postid_str, ZonedTime{zonedTimeZone = ctz, zonedTimeToLocalTime = td{localTimeOfDay = tod}}):(schedule pd)} 
+                     td ptfunc (Prelude.tail file)))))
 
 dayToWeek :: LocalTime -> Week
 dayToWeek day = do
