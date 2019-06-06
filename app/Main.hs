@@ -74,3 +74,8 @@ typeTL posttx postdata tw = do
   Left err -> return (pack "")
   Right re -> return (id_str re)
 
+typeTerm :: Text -> PostData -> [GetMessageCreate] -> IO Text 
+typeTerm posttx postdata tw = do
+ print posttx
+ return (pack "")
+

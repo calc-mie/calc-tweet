@@ -25,7 +25,7 @@ main = do
 monitoring :: PostData -> GetEvents -> IO PostData
 monitoring pd befdm= do
  threadDelay(3*30*1000*1000)
- postdata <- (rtCheck pd >>= remindCheck typeTL)-- monitoring retweeting
+ postdata <- (rtCheck pd >>= remindCheck typeTerm)-- monitoring retweeting
  -- monitoring direct message
  directmessage <- getGetDM
  case directmessage of 
@@ -54,9 +54,9 @@ makeNotice postdata tw
    "$date"          -> makeNotice (nextMakeNotice postdata tw "date") (Prelude.tail tw)
    "$locale"        -> makeNotice (nextMakeNotice postdata tw "locale") (Prelude.tail tw)
    "$clear"         -> makeNotice (setPostData ([], calcweb postdata, schedule postdata, noon postdata)) (Prelude.tail tw)
-   "$post"          -> postTweet postdata tw typeTL >>= (\ret -> makeNotice ret (Prelude.tail tw))
-   "$print"         -> postTweet postdata tw typeDM >>= (\ret -> makeNotice ret (Prelude.tail tw))
-   "$post-calc-web" -> calcWebPost postdata tw typeTL >>= (\ret -> makeNotice ret (Prelude.tail tw))
+   "$post"          -> postTweet postdata tw typeTerm >>= (\ret -> makeNotice ret (Prelude.tail tw))
+   "$print"         -> postTweet postdata tw typeTerm >>= (\ret -> makeNotice ret (Prelude.tail tw))
+   "$post-calc-web" -> calcWebPost postdata tw typeTerm >>= (\ret -> makeNotice ret (Prelude.tail tw))
    "$useradd"       -> userAdd postdata tw >>= (\ret -> makeNotice ret (Prelude.tail tw))
    _                -> makeNotice postdata (Prelude.tail tw)
 
@@ -73,4 +73,9 @@ typeTL posttx postdata tw = do
  case response of
   Left err -> return (pack "")
   Right re -> return (id_str re)
+
+typeTerm :: Text -> PostData -> [GetMessageCreate] -> IO Text 
+typeTerm posttx postdata tw = do
+ print posttx
+ return (pack "")
 

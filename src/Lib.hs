@@ -43,7 +43,7 @@ data PostType = TL
 
 calcwebdir = "/home/share/posts/posts-available/"
 srvcalcdir = "/srv/calc-web/posts"
-reminddir = "/usr/local/calc-tweet/reminder"
+reminddir = "/usr/local/calc-tweet/reminder/"
 
 
 permissionIndexes :: [Text] -> [User] -> Int -> [Int]
@@ -80,7 +80,7 @@ setPostData (sendtx, web, sche, non) = PostData { sendtext = sendtx, calcweb = w
 
 postTweet :: PostData -> [GetMessageCreate] -> (Text -> PostData -> [GetMessageCreate] -> IO Text) -> IO PostData
 postTweet postdata tw ptfunc= do 
- let ntdata = createNoticeData ((Prelude.filter (((getsender_id.getmessage_create.Prelude.head) tw ==).sender_id)) (sendtext postdata))
+ let ntdata = createNoticeData ((Prelude.reverse.Prelude.filter (((getsender_id.getmessage_create.Prelude.head) tw ==).sender_id)) (sendtext postdata))
                                NoticeData{notice = [], date = [], time = [], locale =[]}
  if (Prelude.null.notice) ntdata then return postdata
  else (do
@@ -132,11 +132,11 @@ makeTweet ntdata n mx tw = if n>mx then tw else
                              Data.Text.append (elemText n (time ntdata)) (
                              Data.Text.append (if (Data.Text.null.elemText n) (locale ntdata) then pack "" 
                                                 else Data.Text.append (pack "＠.") (elemText n (locale ntdata))) (pack "\n"))))  -- createSchedule
-                             else makeTweet ntdata (n+1) mx tw)
+                             else tw)
 
 elemText :: Int -> [(Text, Int)] -> Text
 elemText n text = if (n `notElem` Prelude.map snd text) then pack "" 
-                        else Data.Text.append ((fst.Prelude.last.Prelude.filter ((==n).snd)) text) (pack " ")
+                        else Data.Text.append ((fst.Prelude.head.Prelude.filter ((==n).snd)) text) (pack " ")
 
 userAdd :: PostData -> [GetMessageCreate] -> IO PostData
 userAdd postdata tw = do
@@ -195,30 +195,30 @@ rtCheck postdata = do
 remindCheck :: (Text -> PostData -> [GetMessageCreate] -> IO Text) ->  PostData -> IO PostData
 remindCheck ptfunc postdata = do
  today <- zonedTimeToLocalTime<$>getZonedTime
- case divMod ((todHour.localTimeOfDay) today) 12 of
+ case divMod ((todHour.localTimeOfDay) today) 14 of
   (0,_)  -> return postdata { noon = False }
-  (1,0)  -> getDirectoryContents reminddir >>= (\fs -> loop postdata today ptfunc fs)
-  (1,_)  -> return postdata { noon = True  }
+  (1,0)  -> getDirectoryContents reminddir >>= (\fs -> loop postdata today ptfunc (Prelude.map (reminddir++) fs))
+  (1,_)  -> return postdata { noon = True }
   where
    loop :: PostData -> LocalTime -> (Text -> PostData -> [GetMessageCreate] -> IO Text) -> [FilePath] -> IO PostData
-   loop pd td ptfunc file = if Prelude.null file || noon pd  then return pd { noon = True }
+   loop pd td ptfunc file = if Prelude.null file || noon pd then return pd { noon = True }
     else (doesFileExist.Prelude.head) file >>= 
-     (\ch -> if not ch then loop pd td ptfunc (Prelude.tail file)
-       else ( do
-        (getWeek, time, text)<-(\f->((read.unpack.Prelude.head) f
-                                    ,(Prelude.head.Prelude.tail) f
-                                    ,(Data.Text.unlines.Prelude.tail.Prelude.tail) f)).Data.Text.lines<$>T.readFile (Prelude.head file)
-        if dayToWeek td /= ((toEnum :: Int -> Week) getWeek) then loop pd td ptfunc (Prelude.tail file)
-        else ( do
-         (ft,lt) <- getNum ':' time (25,61)
-         case makeTimeOfDayValid ft lt 0 of
-          Nothing  -> loop pd td ptfunc (Prelude.tail file)
-          Just tod -> ( do
-           postid_str <- ptfunc text pd []
-           ctz <- getCurrentTimeZone
-           if Data.Text.null postid_str then loop pd td ptfunc (Prelude.tail file)
-           else loop pd{schedule = (postid_str, ZonedTime{zonedTimeZone = ctz, zonedTimeToLocalTime = td{localTimeOfDay = tod}}):(schedule pd)} 
-                     td ptfunc (Prelude.tail file)))))
+     (\check -> if not check then loop pd td ptfunc (Prelude.tail file)
+     else ( do
+      (getWeek, time, text)<-(\f->((read.unpack.Prelude.head) f
+                                  ,(Prelude.head.Prelude.tail) f
+                                  ,(Data.Text.unlines.Prelude.tail.Prelude.tail) f)).Data.Text.lines<$>T.readFile (Prelude.head file)
+      if dayToWeek td /= ((toEnum :: Int -> Week) getWeek) then loop pd td ptfunc (Prelude.tail file)
+      else ( do
+       (ft,lt) <- getNum ':' time (25,61)
+       case makeTimeOfDayValid ft lt 0 of
+        Nothing  -> loop pd td ptfunc (Prelude.tail file)
+        Just tod -> ( do
+         postid_str <- ptfunc text pd []
+         ctz <- getCurrentTimeZone
+         if Data.Text.null postid_str then loop pd td ptfunc (Prelude.tail file)
+         else loop pd{schedule = (postid_str, ZonedTime{zonedTimeZone = ctz, zonedTimeToLocalTime = td{localTimeOfDay = tod}}):(schedule pd)} 
+                   td ptfunc (Prelude.tail file)))))
 
 dayToWeek :: LocalTime -> Week
 dayToWeek day = do
