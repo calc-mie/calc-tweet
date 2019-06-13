@@ -8,10 +8,11 @@ import TwitterAPI
 import SlackAPI
 
 import Control.Concurrent
-import qualified Data.Text.IO as T
+import qualified Data.Text.IO as TIO
 import Data.List
-import Data.Text
+import qualified Data.Text as T
 import Data.Time
+import qualified Data.Vector as V
 import System.Directory
 
 main = do
@@ -20,62 +21,56 @@ main = do
  -- main
  direct_message <- getGetDM
  case direct_message of
-  Right dm -> monitoring (setPostData ([],oldcalcweb,[], False)) dm >> putStrLn "fin"
+  Right dm -> monitoring (setPostData ((getcreated_timestamp . Prelude.head . getevents) dm, oldcalcweb, [], False)) >> putStrLn "fin"
 
-monitoring :: PostData -> GetEvents -> IO PostData
-monitoring pd befdm= do
+monitoring :: PostData -> IO PostData
+monitoring pd = do
  threadDelay(3*30*1000*1000)
  postdata <- (rtCheck pd >>= remindCheck typeTL)-- monitoring retweeting
  -- monitoring direct message
  directmessage <- getGetDM
  case directmessage of 
   Left err -> error err
-  Right dm -> if (getcreated_timestamp . Prelude.head . getevents) befdm == (getcreated_timestamp . Prelude.head . getevents) dm 
-               then monitoring postdata dm 
+  Right dm -> if befts pd == (getcreated_timestamp . Prelude.head . getevents) dm 
+               then monitoring postdata
               else do
-               pusr <- (T.readFile permitconf >>= getUser.Data.Text.intercalate (pack ",").Data.Text.lines)
+               pusr <- (TIO.readFile permitconf >>= getUser.T.intercalate (T.pack ",").T.lines)
                case pusr of
                 Left err             -> error err
-                Right permissionuser -> case elemIndex ((getcreated_timestamp . Prelude.head . getevents) befdm) (Prelude.map getcreated_timestamp (getevents dm)) of 
-                 Nothing -> monitoring postdata dm
+                Right permissionuser -> case elemIndex (befts pd) (Prelude.map getcreated_timestamp (getevents dm)) of 
+                 Nothing -> monitoring postdata{befts = (getcreated_timestamp . Prelude.head . getevents) dm}
                  Just n  -> do
-                  let puser = permissionIndexes ((Prelude.map (getsender_id.getmessage_create)) ((Prelude.take n.getevents) dm)) permissionuser 0
-                  notices <- makeNotice postdata ((Prelude.reverse.getPermitFromIndex puser.Prelude.take n.getevents) dm)
-                  monitoring notices dm 
+                  let puser = permissionIndexes ((Prelude.map (getsender_id.getmessage_create)) ((getevents) dm)) permissionuser 0
+                  notices <- cmdCheck (postdata{befts = (getcreated_timestamp . Prelude.head . getevents) dm }) ((V.fromList.getevents) dm) n
+                  monitoring notices
 
-makeNotice :: PostData -> [GetMessageCreate] -> IO PostData 
-makeNotice postdata tw 
- | Prelude.null tw        = return postdata 
- | Prelude.length tw > 20 = return (setPostData([], calcweb postdata, schedule postdata, noon postdata)) 
+cmdCheck :: PostData -> V.Vector GetMessageCreate -> Int -> IO PostData 
+cmdCheck postdata tw n
+ | n <= 0                 = return postdata
  | otherwise              = 
-  case (unpack.Prelude.head.Prelude.head.Prelude.map Data.Text.words.Data.Text.lines.gettext.getmessage_data.getmessage_create.Prelude.head) tw of
-   "$notice"        -> makeNotice (nextMakeNotice postdata tw "notice") (Prelude.tail tw)
-   "$time"          -> makeNotice (nextMakeNotice postdata tw "time") (Prelude.tail tw)
-   "$date"          -> makeNotice (nextMakeNotice postdata tw "date") (Prelude.tail tw)
-   "$locale"        -> makeNotice (nextMakeNotice postdata tw "locale") (Prelude.tail tw)
-   "$clear"         -> makeNotice (setPostData ([], calcweb postdata, schedule postdata, noon postdata)) (Prelude.tail tw)
-   "$post"          -> postTweet postdata tw typeTL >>= (\ret -> makeNotice ret (Prelude.tail tw))
-   "$print"         -> postTweet postdata tw typeDM >>= (\ret -> makeNotice ret (Prelude.tail tw))
-   "$post-calc-web" -> calcWebPost postdata tw typeTL >>= (\ret -> makeNotice ret (Prelude.tail tw))
-   "$useradd"       -> userAdd postdata tw >>= (\ret -> makeNotice ret (Prelude.tail tw))
-   _                -> makeNotice postdata (Prelude.tail tw)
+  case (T.unpack.Prelude.head.Prelude.head.Prelude.map T.words.T.lines.gettext.getmessage_data.getmessage_create) (tw V.! n) of
+   "$post"          -> postTweet postdata ((V.toList.V.drop n) tw) typeTL >>= (\ret -> cmdCheck ret tw (n-1))
+   "$print"         -> postTweet postdata ((V.toList.V.drop n) tw) typeDM >>= (\ret -> cmdCheck ret tw (n-1))
+   "$post-calc-web" -> calcWebPost postdata ((V.toList.V.drop n) tw) typeTL >>= (\ret -> cmdCheck ret tw (n-1))
+   "$useradd"       -> userAdd postdata ((V.toList.V.drop n) tw) >>= (\ret -> cmdCheck ret tw (n-1))
+   _                -> cmdCheck postdata tw (n-1)
 
 
-typeDM :: Text -> PostData -> [GetMessageCreate] -> IO Text
+typeDM :: T.Text -> PostData -> [GetMessageCreate] -> IO T.Text
 typeDM posttx postdata tw = do
  postDM posttx ((getsender_id.getmessage_create.Prelude.head) tw)
- return (pack "")
+ return (T.pack "")
 
-typeTL :: Text -> PostData -> [GetMessageCreate] -> IO Text
+typeTL :: T.Text -> PostData -> [GetMessageCreate] -> IO T.Text
 typeTL posttx postdata tw = do 
  response <- tweet posttx
  postSlack posttx
  case response of
-  Left err -> return (pack "")
+  Left err -> return (T.pack "")
   Right re -> return (id_str re)
 
-typeTerm :: Text -> PostData -> [GetMessageCreate] -> IO Text 
+typeTerm :: T.Text -> PostData -> [GetMessageCreate] -> IO T.Text 
 typeTerm posttx postdata tw = do
  print posttx
- return (pack "")
+ return (T.pack "")
 
