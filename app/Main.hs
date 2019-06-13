@@ -37,16 +37,16 @@ monitoring pd = do
                pusr <- (TIO.readFile permitconf >>= getUser.T.intercalate (T.pack ",").T.lines)
                case pusr of
                 Left err             -> error err
-                Right permissionuser -> case elemIndex (befts pd) (Prelude.map getcreated_timestamp (getevents dm)) of 
-                 Nothing -> monitoring postdata{befts = (getcreated_timestamp . Prelude.head . getevents) dm}
-                 Just n  -> do
-                  let puser = permissionIndexes ((Prelude.map (getsender_id.getmessage_create)) ((getevents) dm)) permissionuser 0
-                  notices <- cmdCheck (postdata{befts = (getcreated_timestamp . Prelude.head . getevents) dm }) ((V.fromList.getevents) dm) n
-                  monitoring notices
+                Right permissionuser -> ( do
+                 let puser = permissionIndexes ((Prelude.map (getsender_id.getmessage_create)) ((getevents) dm)) permissionuser 0
+                 cmdCheck (postdata{befts = (getcreated_timestamp . Prelude.head . getevents) dm }) ((V.fromList.getevents) dm) (
+                  case elemIndex (befts pd) (Prelude.map getcreated_timestamp (getevents dm)) of 
+                   Nothing -> 49
+                   Just n  -> n ) >>= monitoring )
 
 cmdCheck :: PostData -> V.Vector GetMessageCreate -> Int -> IO PostData 
 cmdCheck postdata tw n
- | n <= 0                 = return postdata
+ | n < 0                 = return postdata
  | otherwise              = 
   case (T.unpack.Prelude.head.Prelude.head.Prelude.map T.words.T.lines.gettext.getmessage_data.getmessage_create) (tw V.! n) of
    "$post"          -> postTweet postdata ((V.toList.V.drop n) tw) typeTL >>= (\ret -> cmdCheck ret tw (n-1))

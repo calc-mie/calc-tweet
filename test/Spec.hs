@@ -38,7 +38,7 @@ monitoring pd = do
                case pusr of
                 Left err             -> error err
                 Right permissionuser -> case elemIndex (befts pd) (Prelude.map getcreated_timestamp (getevents dm)) of 
-                 Nothing -> monitoring postdata{befts = (getcreated_timestamp . Prelude.head . getevents) dm}
+                 Nothing ->        
                  Just n  -> do
                   let puser = permissionIndexes ((Prelude.map (getsender_id.getmessage_create)) ((getevents) dm)) permissionuser 0
                   notices <- cmdCheck (postdata{befts = (getcreated_timestamp . Prelude.head . getevents) dm }) ((V.fromList.getevents) dm) n

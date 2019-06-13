@@ -92,7 +92,6 @@ calcWebPost postdata tw ptfunc= do
                  ptfunc webtx postdata tw
                  loop (Prelude.tail na) np )
   
--- 変更するよ
 createNoticeData :: [GetMessageCreate] -> NoticeData -> NoticeData
 createNoticeData messages ntdata = if Prelude.null messages || noticeAll ntdata then ntdata else createNoticeData (Prelude.tail messages) (
  case (T.unpack.parampart.head) messages of
