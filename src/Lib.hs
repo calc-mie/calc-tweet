@@ -62,9 +62,8 @@ setPostData (beforets, web, sche, non) = PostData { befts = beforets, calcweb = 
 
 postTweet :: PostData -> [GetMessageCreate] -> (T.Text -> PostData -> [GetMessageCreate] -> IO T.Text) -> IO PostData
 postTweet postdata tw ptfunc= do 
- let ntdata = createNoticeData ((reverse.takeWhile (((\x -> (x/=(T.pack "$clear")) || (x/=(T.pack "$post"))).head.head.textTolistlisttext.dmTotext))) tw)
+ let ntdata = createNoticeData (takeWhile (((\x -> (x/=(T.pack "$clear")) || (x/=(T.pack "$post"))).head.head.textTolistlisttext.dmTotext)) tw)
                                NoticeData{notice = T.pack "", date = [], time = [], locale =[]}
- print ntdata
  if (T.null.notice) ntdata then return postdata
  else (do
   posttw <- TIO.readFile noticetempconf
@@ -96,16 +95,16 @@ calcWebPost postdata tw ptfunc= do
 createNoticeData :: [GetMessageCreate] -> NoticeData -> NoticeData
 createNoticeData messages ntdata = if Prelude.null messages || noticeAll ntdata then ntdata else createNoticeData (Prelude.tail messages) (
   case (T.unpack.parampart.head) messages of
-   "$notice" -> ntdata{notice = (texttwopart.head) messages}
-   "$date"   -> ntdata{date = (gmcToNd.head) messages:date ntdata}
-   "$time"   -> ntdata{time = (gmcToNd.head) messages:time ntdata}
-   "$locale" -> ntdata{locale = (gmcToNd.head) messages:locale ntdata}
+   "$notice" -> if (T.null.notice) ntdata then ntdata{notice = (texttwopart.head) messages} else ntdata
+   "$date"   -> if ((snd.gmcToNd.head) messages) `elem` (map snd (date ntdata)) then ntdata else ntdata { date = ((gmcToNd.head) messages):date ntdata }
+   "$time"   -> if ((snd.gmcToNd.head) messages) `elem` (map snd (time ntdata)) then ntdata else ntdata { time = ((gmcToNd.head) messages):time ntdata }
+   "$locale" -> if ((snd.gmcToNd.head) messages) `elem` (map snd (locale ntdata)) then ntdata else ntdata { locale = ((gmcToNd.head) messages):locale ntdata }
    _         -> ntdata
   )
 
 
 gmcToNd :: GetMessageCreate -> (T.Text,Int)
-gmcToNd message = if (T.head.(!!1).head.textTolistlisttext.dmTotext) message == '-' then (textothpart message, numpart message) else (texttwopart message, 1)
+gmcToNd message = if (T.head.(!!1).head.textTolistlisttext.dmTotext) message == '-' then  (textothpart message, numpart message) else (texttwopart message, 1)
 
 noticeAll :: NoticeData -> Bool
 noticeAll ntdata = if (T.null.notice) ntdata || (null.date) ntdata || (null.time) ntdata || (null.locale) ntdata then False else True
