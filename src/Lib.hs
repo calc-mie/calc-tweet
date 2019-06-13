@@ -62,7 +62,7 @@ setPostData (beforets, web, sche, non) = PostData { befts = beforets, calcweb = 
 
 postTweet :: PostData -> [GetMessageCreate] -> (T.Text -> PostData -> [GetMessageCreate] -> IO T.Text) -> IO PostData
 postTweet postdata tw ptfunc= do 
- let ntdata = createNoticeData (takeWhile (((\x -> (x/=(T.pack "$clear")) || (x/=(T.pack "$post"))).head.head.textTolistlisttext.dmTotext)) tw)
+ let ntdata = createNoticeData (takeWhile (((\x -> (x/=(T.pack "$clear")) && (x/=(T.pack "$post"))).head.head.textTolistlisttext.dmTotext)) tw)
                                NoticeData{notice = T.pack "", date = [], time = [], locale =[]}
  if (T.null.notice) ntdata then return postdata
  else (do

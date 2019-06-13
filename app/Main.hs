@@ -25,7 +25,7 @@ main = do
 
 monitoring :: PostData -> IO PostData
 monitoring pd = do
- threadDelay(3*30*1000*1000)
+ threadDelay(7*10*1000*1000)
  postdata <- (rtCheck pd >>= remindCheck typeTL)-- monitoring retweeting
  -- monitoring direct message
  directmessage <- getGetDM
