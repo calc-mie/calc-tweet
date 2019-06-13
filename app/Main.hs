@@ -30,29 +30,29 @@ monitoring pd = do
  -- monitoring direct message
  directmessage <- getGetDM
  case directmessage of 
-  Left err -> error err
+  Left err -> monitoring postdata
   Right dm -> if befts pd == (getcreated_timestamp . Prelude.head . getevents) dm 
                then monitoring postdata
               else do
                pusr <- (TIO.readFile permitconf >>= getUser.T.intercalate (T.pack ",").T.lines)
                case pusr of
-                Left err             -> error err
+                Left err             -> monitoring postdata
                 Right permissionuser -> ( do
                  let puser = permissionIndexes ((Prelude.map (getsender_id.getmessage_create)) ((getevents) dm)) permissionuser 0
                  cmdCheck (postdata{befts = (getcreated_timestamp . Prelude.head . getevents) dm }) ((V.fromList.getevents) dm) (
                   case elemIndex (befts pd) (Prelude.map getcreated_timestamp (getevents dm)) of 
-                   Nothing -> 49
-                   Just n  -> n ) >>= monitoring )
+                   Nothing -> (length.Prelude.map getcreated_timestamp) (getevents dm)
+                   Just n  -> (n-1) ) >>= monitoring )
 
 cmdCheck :: PostData -> V.Vector GetMessageCreate -> Int -> IO PostData 
 cmdCheck postdata tw n
  | n < 0                 = return postdata
  | otherwise              = 
   case (T.unpack.Prelude.head.Prelude.head.Prelude.map T.words.T.lines.gettext.getmessage_data.getmessage_create) (tw V.! n) of
-   "$post"          -> postTweet postdata ((V.toList.V.drop n) tw) typeTL >>= (\ret -> cmdCheck ret tw (n-1))
-   "$print"         -> postTweet postdata ((V.toList.V.drop n) tw) typeDM >>= (\ret -> cmdCheck ret tw (n-1))
-   "$post-calc-web" -> calcWebPost postdata ((V.toList.V.drop n) tw) typeTL >>= (\ret -> cmdCheck ret tw (n-1))
-   "$useradd"       -> userAdd postdata ((V.toList.V.drop n) tw) >>= (\ret -> cmdCheck ret tw (n-1))
+   "$post"          -> postTweet postdata ((V.toList.V.drop (n+1)) tw) typeTL >>= (\ret -> cmdCheck ret tw (n-1))
+   "$print"         -> postTweet postdata ((V.toList.V.drop (n+1)) tw) typeDM >>= (\ret -> cmdCheck ret tw (n-1))
+   "$post-calc-web" -> calcWebPost postdata ((V.toList.V.drop (n+1)) tw) typeTL >>= (\ret -> cmdCheck ret tw (n-1))
+   "$useradd"       -> userAdd postdata ((V.toList.V.drop (n+1)) tw) >>= (\ret -> cmdCheck ret tw (n-1))
    _                -> cmdCheck postdata tw (n-1)
 
 

@@ -16,44 +16,50 @@ import qualified Data.Vector as V
 import System.Directory
 
 main = do
+ print "test startiing!!!"
  -- calcweb-post
- oldcalcweb <- getDirectoryContents srvcalcdir
+ let oldcalcweb = []
  -- main
- direct_message <- getGetDM
+ direct_message <- getGetDMtest
+ print "popopopo"
  case direct_message of
   Right dm -> monitoring (setPostData ((getcreated_timestamp . Prelude.head . getevents) dm, oldcalcweb, [], False)) >> putStrLn "fin"
 
 monitoring :: PostData -> IO PostData
 monitoring pd = do
- threadDelay(3*30*1000*1000)
+ threadDelay(3*1000*1000)
+ print (befts pd)
  postdata <- (rtCheck pd >>= remindCheck typeTerm)-- monitoring retweeting
  -- monitoring direct message
- directmessage <- getGetDM
+ directmessage <- getGetDMtest
  case directmessage of 
-  Left err -> error err
+  Left err -> monitoring postdata
   Right dm -> if befts pd == (getcreated_timestamp . Prelude.head . getevents) dm 
                then monitoring postdata
               else do
-               pusr <- (TIO.readFile permitconf >>= getUser.T.intercalate (T.pack ",").T.lines)
+               -- pusr <- (TIO.readFile permitconf >>= getUser.T.intercalate (T.pack ",").T.lines)
+               print dm
+               pusr <- getUserTest
                case pusr of
-                Left err             -> error err
-                Right permissionuser -> case elemIndex (befts pd) (Prelude.map getcreated_timestamp (getevents dm)) of 
-                 Nothing ->        
-                 Just n  -> do
-                  let puser = permissionIndexes ((Prelude.map (getsender_id.getmessage_create)) ((getevents) dm)) permissionuser 0
-                  notices <- cmdCheck (postdata{befts = (getcreated_timestamp . Prelude.head . getevents) dm }) ((V.fromList.getevents) dm) n
-                  monitoring notices
+                Left err             -> monitoring postdata
+                Right permissionuser -> ( do
+                 print "monitoring"
+                 let puser = permissionIndexes ((Prelude.map (getsender_id.getmessage_create)) ((getevents) dm)) permissionuser 0
+                 cmdCheck (postdata{befts = (getcreated_timestamp . Prelude.head . getevents) dm }) ((V.fromList.getevents) dm) (
+                  case elemIndex (befts pd) (Prelude.map getcreated_timestamp (getevents dm)) of 
+                   Nothing -> (length.Prelude.map getcreated_timestamp) (getevents dm)
+                   Just n  -> (n-1) ) >>= monitoring)
 
 cmdCheck :: PostData -> V.Vector GetMessageCreate -> Int -> IO PostData 
 cmdCheck postdata tw n
- | n <= 0                 = return postdata
+ | n < 0                 = return postdata
  | otherwise              = 
   case (T.unpack.Prelude.head.Prelude.head.Prelude.map T.words.T.lines.gettext.getmessage_data.getmessage_create) (tw V.! n) of
-   "$post"          -> postTweet postdata ((V.toList.V.drop n) tw) typeTerm >>= (\ret -> cmdCheck ret tw (n-1))
-   "$print"         -> postTweet postdata ((V.toList.V.drop n) tw) typeTerm >>= (\ret -> cmdCheck ret tw (n-1))
-   "$post-calc-web" -> calcWebPost postdata ((V.toList.V.drop n) tw) typeTerm >>= (\ret -> cmdCheck ret tw (n-1))
-   "$useradd"       -> userAdd postdata ((V.toList.V.drop n) tw) >>= (\ret -> cmdCheck ret tw (n-1))
-   _                -> cmdCheck postdata tw (n-1)
+   "$post"          -> print "post" >> postTweet postdata ((V.toList.V.drop (n+1)) tw) typeTerm >>= (\ret -> cmdCheck ret tw (n-1))
+   "$print"         -> print "print" >>postTweet postdata ((V.toList.V.drop (n+1)) tw) typeTerm >>= (\ret -> cmdCheck ret tw (n-1))
+   "$post-calc-web" -> print "post-calc" >>calcWebPost postdata ((V.toList.V.drop (n+1)) tw) typeTerm >>= (\ret -> cmdCheck ret tw (n-1))
+   "$useradd"       -> print "post-user" >>userAdd postdata ((V.toList.V.drop (n+1)) tw) >>= (\ret -> cmdCheck ret tw (n-1))
+   _                -> print "non" >> cmdCheck postdata tw (n-1)
 
 
 typeDM :: T.Text -> PostData -> [GetMessageCreate] -> IO T.Text
@@ -74,3 +80,15 @@ typeTerm posttx postdata tw = do
  print posttx
  return (T.pack "")
 
+getGetDMtest :: IO (Either String GetEvents)
+getGetDMtest = do
+ messg <- T.lines <$> TIO.readFile "./test/test.txt"
+ return(Right (GetEvents { getevents = loop messg}))
+  where
+   loop msg = if null msg then [] 
+    else GetMessageCreate { getcreated_timestamp = (head.T.words.head) msg
+                          , getmessage_create = GetMessageData { getsender_id = "0" 
+                                                               , getmessage_data = GetDM { gettext = (T.unwords.tail.T.words.head) msg}}}:loop (tail msg)
+
+getUserTest :: IO (Either String [User])
+getUserTest = return ( Right [User{gid_str = "0"}])

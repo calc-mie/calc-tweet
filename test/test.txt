@@ -1,0 +1,32 @@
+31 $post
+30 $date -5 sasasa
+29 $notice oaoaoaoao
+28 $print
+27 $date -5 asasas
+26 $notice ksksksksks
+25 $post
+24 $notice askefhawklw;gn
+23 $date -5 kakaka
+22 $print
+21 $notice sdfhaso;gaso;gsa
+20 $date now
+19 $time today
+18 $post
+17 $notice aoisf
+16 $date ima
+15 $time 10
+14 $post
+13 $print
+12 $time -4 now
+11 $date -3 today
+10 $notice oioioi
+9 $print
+8 $notice popopopopopopo
+7 $date ?
+6 $locale -5 dokokoko
+5 $print
+4 hahahahaha
+3 $notice nowing
+2 $date here
+1 $time -3 ch
+0 hahaha
