@@ -42,20 +42,20 @@ reminddir = "/usr/local/calc-tweet/reminder/"
 
 permissionIndexes :: [T.Text] -> [User] -> Int -> [Int]
 permissionIndexes dm puser index 
- | Prelude.null dm                                    = []  
- | Prelude.head dm `elem` (Prelude.map gid_str puser) = index:permissionIndexes (Prelude.tail dm) puser (index + 1)
- | otherwise                                          = permissionIndexes (Prelude.tail dm) puser (index + 1)
+ | null dm                                    = []  
+ | head dm `elem` (map gid_str puser) = index:permissionIndexes (tail dm) puser (index + 1)
+ | otherwise                                          = permissionIndexes (tail dm) puser (index + 1)
 
 getPermitFromIndex :: [Int] -> [GetMessageCreate] -> [GetMessageCreate]
-getPermitFromIndex ind mcs = if Prelude.null ind then [] else (mcs!!Prelude.head ind):getPermitFromIndex (Prelude.tail ind) mcs
+getPermitFromIndex ind mcs = if null ind then [] else (mcs!!head ind):getPermitFromIndex (tail ind) mcs
 
 dmTotext = gettext.getmessage_data.getmessage_create
-textTolistlisttext = Prelude.map T.words.T.lines
-listlisttextTotext = T.init.T.unlines.Prelude.map T.unwords
+textTolistlisttext = map T.words.T.lines
+listlisttextTotext = T.init.T.unlines.map T.unwords
 parampart = head.head.textTolistlisttext.dmTotext
-texttwopart = listlisttextTotext.(\n->(Prelude.tail.Prelude.head)n:(Prelude.tail n)).textTolistlisttext.dmTotext
-textothpart = listlisttextTotext.(\n->(Prelude.tail.Prelude.tail.Prelude.head)n:(Prelude.tail n)).textTolistlisttext.dmTotext
-numpart = read.T.unpack.T.tail.Prelude.head.Prelude.tail.T.words.dmTotext
+texttwopart = listlisttextTotext.(\n->(tail.head)n:(tail n)).textTolistlisttext.dmTotext
+textothpart = listlisttextTotext.(\n->(tail.tail.head)n:(tail n)).textTolistlisttext.dmTotext
+numpart = read.T.unpack.T.tail.head.tail.T.words.dmTotext
 
 setPostData :: (T.Text, [String],[(T.Text,ZonedTime)], Bool) -> PostData
 setPostData (beforets, web, sche, non) = PostData { befts = beforets, calcweb = web , schedule = sche, noon = non }
@@ -67,7 +67,7 @@ postTweet postdata tw ptfunc= do
  if (T.null.notice) ntdata then return postdata
  else (do
   posttw <- TIO.readFile noticetempconf
-  let posttx = makeTweet ntdata 1 ((Prelude.maximum.Prelude.map (Prelude.maximum.Prelude.map snd.((T.pack "null",0):)))[date ntdata, time ntdata, locale ntdata]) 
+  let posttx = makeTweet ntdata 1 ((maximum.map (maximum.map snd.((T.pack "null",0):)))[date ntdata, time ntdata, locale ntdata]) 
                                                                 (T.append posttw (T.append (notice ntdata) (T.pack "\n")))
   postid_str <- ptfunc posttx postdata tw
   if T.null postid_str then return postdata
@@ -76,24 +76,24 @@ postTweet postdata tw ptfunc= do
 calcWebPost :: PostData -> [GetMessageCreate] -> (T.Text -> PostData -> [GetMessageCreate] -> IO T.Text) -> IO PostData
 calcWebPost postdata tw ptfunc= do
  nowpost <- getDirectoryContents srvcalcdir
- let newarticle = Prelude.filter (\x->x `notElem` (calcweb postdata)) nowpost
- if Prelude.null newarticle then return postdata
+ let newarticle = filter (\x->x `notElem` (calcweb postdata)) nowpost
+ if null newarticle then return postdata
  else loop newarticle nowpost
   where
    loop :: [String] -> [String] -> IO PostData
-   loop na np = if Prelude.null na then return postdata { calcweb = np }
+   loop na np = if null na then return postdata { calcweb = np }
                 else ( do
-                 article <- T.lines<$>TIO.readFile (calcwebdir ++ ((Prelude.takeWhile (/= '.')).Prelude.head) na ++ ".md")
+                 article <- T.lines<$>TIO.readFile (calcwebdir ++ ((takeWhile (/= '.')).head) na ++ ".md")
                  let title  = T.drop 7 (article!!1)
                      author = (article!!2)
                      webtx  = T.pack $ T.unpack author ++ "\n" 
                                      ++ T.unpack title ++ "について書きました。\n url: https://calc.mie.jp/posts/" 
-                                     ++ Prelude.head na
+                                     ++ head na
                  ptfunc webtx postdata tw
-                 loop (Prelude.tail na) np )
+                 loop (tail na) np )
   
 createNoticeData :: [GetMessageCreate] -> NoticeData -> NoticeData
-createNoticeData messages ntdata = if Prelude.null messages || noticeAll ntdata then ntdata else createNoticeData (Prelude.tail messages) (
+createNoticeData messages ntdata = if null messages || noticeAll ntdata then ntdata else createNoticeData (tail messages) (
   case (T.unpack.parampart.head) messages of
    "$notice" -> if (T.null.notice) ntdata then ntdata{notice = (texttwopart.head) messages} else ntdata
    "$date"   -> if ((snd.gmcToNd.head) messages) `elem` (map snd (date ntdata)) then ntdata else ntdata { date = ((gmcToNd.head) messages):date ntdata }
@@ -111,7 +111,7 @@ noticeAll ntdata = if (T.null.notice) ntdata || (null.date) ntdata || (null.time
  
 makeTweet :: NoticeData -> Int -> Int -> T.Text -> T.Text
 makeTweet ntdata n mx tw = if n>mx then tw else 
- makeTweet ntdata (n+1) mx (if n `elem` Prelude.concatMap (Prelude.map snd) [date ntdata, time ntdata, locale ntdata] then
+ makeTweet ntdata (n+1) mx (if n `elem` concatMap (map snd) [date ntdata, time ntdata, locale ntdata] then
                              T.append tw (
                              T.append (elemText n (date ntdata)) (
                              T.append (elemText n (time ntdata)) (
@@ -120,26 +120,26 @@ makeTweet ntdata n mx tw = if n>mx then tw else
                              else tw)
 
 elemText :: Int -> [(T.Text, Int)] -> T.Text
-elemText n text = if (n `notElem` Prelude.map snd text) then T.pack "" 
-                        else T.append ((fst.Prelude.head.Prelude.filter ((==n).snd)) text) (T.pack " ")
+elemText n text = if (n `notElem` map snd text) then T.pack "" 
+                        else T.append ((fst.head.filter ((==n).snd)) text) (T.pack " ")
 
 userAdd :: PostData -> [GetMessageCreate] -> IO PostData
 userAdd postdata tw = do
- let user = ((T.drop 9.gettext.getmessage_data.getmessage_create.Prelude.head) tw)
+ let user = ((T.drop 9.gettext.getmessage_data.getmessage_create.head) tw)
  permituser <- T.lines<$>TIO.readFile permitconf
  if user `notElem` permituser then (TIO.appendFile permitconf user >> return postdata)
  else return postdata 
 
 setNoticeTime :: PostData -> NoticeData -> T.Text -> IO [(T.Text,ZonedTime)]
-setNoticeTime pdt ndt res = loop 1 ((Prelude.maximum.Prelude.map (Prelude.maximum.Prelude.map snd.((T.pack "null",0):)))[date ndt, time ndt]) [date ndt, time ndt] pdt
+setNoticeTime pdt ndt res = loop 1 ((maximum.map (maximum.map snd.((T.pack "null",0):)))[date ndt, time ndt]) [date ndt, time ndt] pdt
  where 
    loop :: Int -> Int -> [[(T.Text,Int)]] -> PostData -> IO[(T.Text,ZonedTime)]
    loop n mx [dat, tim] pdt
     | n>mx = (return.schedule) pdt 
-    | Prelude.all (elem n.Prelude.map snd) [dat, tim] = do
+    | all (elem n.map snd) [dat, tim] = do
        ctz     <- getCurrentTimeZone
-       (ft,lt) <- getNum ':' ((fst.Prelude.head.Prelude.filter ((==n).snd)) tim) (25,61)
-       (fd,ld) <- getNum '/' ((fst.Prelude.head.Prelude.filter ((==n).snd)) dat) (13,32)
+       (ft,lt) <- getNum ':' ((fst.head.filter ((==n).snd)) tim) (25,61)
+       (fd,ld) <- getNum '/' ((fst.head.filter ((==n).snd)) dat) (13,32)
        year <- (\(y,m,d)->if fd < m then y+1 else y).toGregorian.localDay.zonedTimeToLocalTime<$>getZonedTime
        case makeTimeOfDayValid ft lt 0 of
         Nothing -> loop (n+1) mx [dat,tim] pdt 
@@ -162,48 +162,48 @@ getNum c text (f,l) = if T.null text then return (f,l) else case (elemIndex c.T.
 rtCheck :: PostData -> IO PostData
 rtCheck postdata = do
  now <- zonedTimeToUTC<$>getZonedTime
- let rtlist = Prelude.filter ((<=15*60).((`diffUTCTime` now).zonedTimeToUTC.snd)) (schedule postdata)
- case Prelude.null rtlist of
+ let rtlist = filter ((<=15*60).((`diffUTCTime` now).zonedTimeToUTC.snd)) (schedule postdata)
+ case null rtlist of
   True  -> return postdata 
   False -> loop rtlist postdata
    where 
-    loop rtl pdt = if Prelude.null rtl then
+    loop rtl pdt = if null rtl then
                     return (setPostData ( befts pdt
                                         , calcweb pdt 
-                                        , Prelude.filter ((>15*60).((`diffUTCTime` now).zonedTimeToUTC.snd)) (schedule pdt)
+                                        , filter ((>15*60).((`diffUTCTime` now).zonedTimeToUTC.snd)) (schedule pdt)
                                         , noon pdt))
                    else  
                     (do
-                      postRT ((fst.Prelude.head) rtl) 
-                      loop (Prelude.tail rtl) pdt )
+                      postRT ((fst.head) rtl) 
+                      loop (tail rtl) pdt )
 
 remindCheck :: (T.Text -> PostData -> [GetMessageCreate] -> IO T.Text) ->  PostData -> IO PostData
 remindCheck ptfunc postdata = do
  today <- zonedTimeToLocalTime<$>getZonedTime
  case divMod ((todHour.localTimeOfDay) today) 12 of
   (0,_)  -> return postdata { noon = False }
-  (1,0)  -> getDirectoryContents reminddir >>= (\fs -> loop postdata today ptfunc (Prelude.map (reminddir++) fs))
+  (1,0)  -> getDirectoryContents reminddir >>= (\fs -> loop postdata today ptfunc (map (reminddir++) fs))
   (1,_)  -> return postdata { noon = True }
   where
    loop :: PostData -> LocalTime -> (T.Text -> PostData -> [GetMessageCreate] -> IO T.Text) -> [FilePath] -> IO PostData
-   loop pd td ptfunc file = if Prelude.null file || noon pd then return pd { noon = True }
-    else (doesFileExist.Prelude.head) file >>= 
-     (\check -> if not check then loop pd td ptfunc (Prelude.tail file)
+   loop pd td ptfunc file = if null file || noon pd then return pd { noon = True }
+    else (doesFileExist.head) file >>= 
+     (\check -> if not check then loop pd td ptfunc (tail file)
      else ( do
-      (getWeek, time, text)<-(\f->((read.T.unpack.Prelude.head) f
-                                  ,(Prelude.head.Prelude.tail) f
-                                  ,(T.unlines.Prelude.tail.Prelude.tail) f)).T.lines<$>TIO.readFile (Prelude.head file)
-      if dayToWeek td /= ((toEnum :: Int -> Week) getWeek) then loop pd td ptfunc (Prelude.tail file)
+      (getWeek, time, text)<-(\f->((read.T.unpack.head) f
+                                  ,(head.tail) f
+                                  ,(T.unlines.tail.tail) f)).T.lines<$>TIO.readFile (head file)
+      if dayToWeek td /= ((toEnum :: Int -> Week) getWeek) then loop pd td ptfunc (tail file)
       else ( do
        (ft,lt) <- getNum ':' time (25,61)
        case makeTimeOfDayValid ft lt 0 of
-        Nothing  -> loop pd td ptfunc (Prelude.tail file)
+        Nothing  -> loop pd td ptfunc (tail file)
         Just tod -> ( do
          postid_str <- ptfunc text pd []
          ctz <- getCurrentTimeZone
-         if T.null postid_str then loop pd td ptfunc (Prelude.tail file)
+         if T.null postid_str then loop pd td ptfunc (tail file)
          else loop pd{schedule = (postid_str, ZonedTime{zonedTimeZone = ctz, zonedTimeToLocalTime = td{localTimeOfDay = tod}}):(schedule pd)} 
-                   td ptfunc (Prelude.tail file)))))
+                   td ptfunc (tail file)))))
 
 dayToWeek :: LocalTime -> Week
 dayToWeek day = do
