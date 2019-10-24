@@ -14,10 +14,21 @@ import qualified Data.Text as T
 import Data.Time
 import qualified Data.Vector as V
 import System.Directory
+import System.IO
+import Control.Exception
+
+emptyint = 1*1000*1000 {- 1 second -}
+mentiont = 12*1000*1000 {-12 second -}
 
 main = do
  -- calcweb-post
  oldcalcweb <- getDirectoryContents srvcalcdir
+ -- api key
+ hSetEcho stdin False
+ botconf <- getAPIkeys ["API key :", "API secret key :", "Access token :", "Access token secret :"]
+ hSetEcho stdin True
+ -- message queue
+ msgqueue <- newMVar [] :: IO (MVar [Tweet])
  -- main
  direct_message <- getGetDM
  case direct_message of

@@ -17,12 +17,14 @@ module TwitterAPI ( permitconf
                   , Tweet (..)
                   , PostTL (..)
                   , User (..)
+                  , getMention (..)
                   , getGetDM
                   , getTL
                   , getUser
                   , postRT
                   , postDM
-                  , tweet) where
+                  , tweet
+                  , getAPIkeys ) where
 
 import Control.Concurrent
 import Data.Text
@@ -41,8 +43,6 @@ import Control.Monad.IO.Class
 permitconf = "/usr/local/calc-tweet/permissionuser.conf"
 noticetempconf = "/usr/local/calc-tweet/temp/notice.conf"
 calcwebtempconf = "/usr/local/calc-tweet/temp/web.conf"
-twitterbotconf = "/usr/local/calc-tweet/bot/twitterbot.conf"
-
 
 -- get DM parser
 data GetDM = GetDM { gettext :: Text
@@ -97,52 +97,58 @@ $(deriveJSON defaultOptions ''PostTL)
 data User = User { gid_str :: Text } deriving (Show)
 $(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 1 }  ''User)
 
-getGetDM :: IO (Either String GetEvents)
-getGetDM = do
+--get Mention parser
+data GetMention = GetMention { gmid_str :: Text
+                             , gmtext   :: Text
+                             , gmuser   :: User} deriving (Show)
+$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 2 }  ''User)
+
+getGetDM :: [String] -> IO (Either String GetEvents)
+getGetDM botconf = do
  response <- do
   req <- parseRequest  "https://api.twitter.com/1.1/direct_messages/events/list.json"
-  httpManager req
+  httpManager req botconf
  return $ eitherDecode $ responseBody response
 
-getMyTweet :: IO(Either String [Tweet])
-getMyTweet = do
+getMyTweet :: [String] -> IO(Either String [Tweet])
+getMyTweet botconf = do
  response <- do
   req <- parseRequest  "https://api.twitter.com/1.1/statuses/user_timeline.json"
-  httpManager req
+  httpManager req botconf
  return $ eitherDecode $ responseBody response
 
-getTL :: IO (Either String [Tweet])
-getTL = do
+getTL :: [String] -> IO (Either String [Tweet])
+getTL botconf = do
  response <- do
   req <- parseRequest  "https://api.twitter.com/1.1/statuses/home_timeline.json?count=1"
-  httpManager req
+  httpManager req botconf
  return $ eitherDecode $ responseBody response
 
-getUser :: Text -> IO (Either String [User])
-getUser screen_name = do
+getUser :: Text -> [String] -> IO (Either String [User])
+getUser screen_name botconf = do
  response <- do
   req <- parseRequest $ "https://api.twitter.com/1.1/users/lookup.json?screen_name="++unpack screen_name
-  httpManager req
+  httpManager req botconf
  return $ eitherDecode $ responseBody response
 
-postRT :: Text -> IO ()
-postRT twid = do
+postRT :: Text -> [String] -> IO ()
+postRT twid botconf = do
  req     <- parseRequest $ "https://api.twitter.com/1.1/statuses/retweet/" ++ unpack twid ++ ".json"
  manager <- newManager tlsManagerSettings
  let postReq = urlEncodedBody [("id", encodeUtf8 twid)] req
- httpManager postReq
+ httpManager postReq botconf
  return ()
 
-tweet :: Text -> IO (Either String PostTL)
-tweet tw = do
+tweet :: Text -> [String] -> IO (Either String PostTL)
+tweet tw botconf = do
  responce <- do
   req     <- parseRequest "https://api.twitter.com/1.1/statuses/update.json"
   let postReq = urlEncodedBody [("status", encodeUtf8 tw)] req
-  httpManager postReq
+  httpManager postReq botconf
  return $ eitherDecode $ responseBody responce
 
-postDM :: Text -> Text -> IO ()
-postDM tw un = do
+postDM :: Text -> Text -> [String] -> IO ()
+postDM tw un botconf = do
  responce <- do
   req <-(\n->n {method = "POST"}) <$>parseRequest "https://api.twitter.com/1.1/direct_messages/events/new.json"  
   let json = PostEvent { postevent = PostMessageCreate 
@@ -151,23 +157,31 @@ postDM tw un = do
                                                             { postmessage_data = PostDM { posttext = tw}
                                                             , posttarget = PostRecipient { postrecipient_id = un}}}}
   let postreq = setRequestBodyJSON json req
-  httpManager postreq
+  httpManager postreq botconf
  return ()
 
-httpManager :: Request -> IO(Response Data.ByteString.Lazy.Internal.ByteString)
-httpManager req = do
- (myOAuth, myCredential) <- botuser
+httpManager :: Request -> [String] ->  IO(Response Data.ByteString.Lazy.Internal.ByteString)
+httpManager req botconf = do
+ (myOAuth, myCredential) <- botuser botconf
  signedReq <- signOAuth myOAuth myCredential req
  manager <- newManager tlsManagerSettings
  Network.HTTP.Conduit.httpLbs signedReq manager
 
-botuser :: IO(OAuth,Credential)
-botuser = do
- botsparameter <- Prelude.lines <$> Prelude.readFile twitterbotconf
+botuser :: [String] -> IO(OAuth,Credential)
+botuser botsparameter = do
  let  myOAuth      = newOAuth { oauthServerName     = "api.twitter.com"
                               , oauthConsumerKey    = C.pack(Prelude.head botsparameter)
                               , oauthConsumerSecret = C.pack(botsparameter !! 1)
   }
       myCredential = newCredential (C.pack(botsparameter !! 2)) (C.pack(botsparameter !! 3))
  return (myOAuth, myCredential)
+
+getAPIkeys :: [String] -> IO [String]
+getAPIkeys [] = return []
+getAPIkeys (m:messages) = do
+ Prelude.putStr m 
+ hFlush stdout
+ api <- Prelude.getLine 
+ Prelude.putChar '\n'
+ getAPIkeys messages >>= (\res -> return (api:res))
 
