@@ -69,21 +69,20 @@ main = do
 --
 --sender_idpart = getsender_id.getmessage_create
 
-typeDM :: T.Text -> PostData -> [GetMessageCreate] -> IO T.Text
-typeDM posttx postdata tw = do
- postDM posttx ((getsender_id.getmessage_create.head) tw)
+typeDM :: T.Text -> PostData -> GetMention -> [String] -> IO T.Text
+typeDM posttx postdata tw botconf = do
+ postDM posttx ((getsender_id.getmessage_create.head) tw) botconf
  return (T.pack "")
 
-typeTL :: T.Text -> PostData -> [GetMessageCreate] -> IO T.Text
-typeTL posttx postdata tw = do 
- response <- tweet posttx
+typeTL :: T.Text -> PostData -> GetMention -> [String] -> IO T.Text
+typeTL posttx postdata tw botconf = do 
+ response <- tweet posttx botconf
  postSlack posttx
  case response of
   Left err -> return (T.pack "")
   Right re -> return (id_str re)
 
-typeTerm :: T.Text -> PostData -> [GetMessageCreate] -> IO T.Text 
-typeTerm posttx postdata tw = do
+typeTerm :: T.Text -> PostData -> GetMention -> [String] -> IO T.Text 
+typeTerm posttx postdata tw botconf = do
  print posttx
  return (T.pack "")
-

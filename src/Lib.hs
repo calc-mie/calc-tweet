@@ -94,23 +94,23 @@ cmdCheck msgq botconf postdata =
 
 tweetCmd :: GetMention -> [String] -> PostData -> IO PostData
 tweetCmd msg botconf postdata = (case filterCmd msg 2 of
- "post"      -> twpsCmd 
- "broadcast" -> twbdCmd 
+ "post"      -> twpostCmd 
+ "broadcast" -> twbroadCmd 
  "rm"        -> twrmCmd 
- "set"       -> twstCmd 
+ "set"       -> twsetCmd 
  _           -> errorCmd) msg botconf postdata
 
 userCmd ::GetMention -> [String] -> PostData -> IO PostData
 userCmd msg botconf postdata = (case filterCmd msg 2 of
  "add"       -> uaddCmd
  "rm"        -> urmCmd 
- "broadcast" -> ubrCmd
+ "broadcast" -> ubroadCmd
  _           -> errorCmd) msg botconf postdata
 
-webCmd :: GetMention -> [String] -> PostData -> IO PostData
-webCmd msg botconf postdata = 
+webCmd :: GetMention -> [String] -> PostData -> IO PostData -- post web
+webCmd msg botconf postdata = calcWebPost postdata msg botconf typeTL
 
-errorCmd :: GetMention -> [String] -> PostData -> IO PostData
+errorCmd :: GetMention -> [String] -> PostData -> IO PostData -- post error
 errorCmd msg botconf postdata = 
 
 filterCmd vmsgq n = (Prelude.!! n.Prelude.head.Prelude.map T.words.T.lines.gmid_str.V.head) vmsgq 
@@ -142,38 +142,39 @@ setPostData (beforets, web, sche, non) = PostData { befts = beforets, calcweb = 
 --  if T.null postid_str then return postdata
 --  else setNoticeTime  postdata ntdata postid_str >>= (\r->return postdata {schedule = r}) )
 
-calcWebPost :: PostData -> [GetMessageCreate] -> (T.Text -> PostData -> [GetMessageCreate] -> IO T.Text) -> IO PostData
-calcWebPost postdata tw ptfunc= do
+calcWebPost :: PostData -> GetMention -> [String] -> (T.Text -> PostData -> [GetMessageCreate] -> IO T.Text) -> IO PostData
+calcWebPost postdata tw botconf ptfunc= do
  nowpost <- getDirectoryContents srvcalcdir
  let newarticle = filter (\x->x `notElem` (calcweb postdata)) nowpost
  if null newarticle then return postdata
- else loop newarticle nowpost
+ else loop newarticle nowpost botconf
   where
-   loop :: [String] -> [String] -> IO PostData
-   loop na np = if null na then return postdata { calcweb = np }
-                else ( do
-                 article <- T.lines<$>TIO.readFile (calcwebdir ++ ((takeWhile (/= '.')).head) na ++ ".md")
-                 let title  = T.drop 7 (article!!1)
-                     author = (article!!2)
-                     webtx  = T.pack $ T.unpack author ++ "\n" 
-                                     ++ T.unpack title ++ "について書きました。\n url: https://calc.mie.jp/posts/" 
-                                     ++ head na
-                 ptfunc webtx postdata tw
-                 loop (tail na) np )
+   loop :: [String] -> [String] -> [String] -> IO PostData
+   loop na np conf =
+    if null na then return postdata { calcweb = np }
+    else ( do
+      article <- T.lines<$>TIO.readFile (calcwebdir ++ ((takeWhile (/= '.')).head) na ++ ".md")
+      let title  = T.drop 7 (article!!1)
+          author = (article!!2)
+          webtx  = T.pack $ T.unpack author ++ "\n" 
+                          ++ T.unpack title ++ "について書きました。\n url: https://calc.mie.jp/posts/" 
+                          ++ head na
+      ptfunc webtx postdata tw conf
+      loop (tail na) np )
   
-createNoticeData :: [GetMessageCreate] -> NoticeData -> NoticeData
-createNoticeData messages ntdata = if null messages || noticeAll ntdata then ntdata else createNoticeData (tail messages) (
-  case (T.unpack.parampart.head) messages of
-   "$notice" -> if (T.null.notice) ntdata then ntdata{notice = (texttwopart.head) messages} else ntdata
-   "$date"   -> if ((snd.gmcToNd.head) messages) `elem` (map snd (date ntdata)) then ntdata else ntdata { date = ((gmcToNd.head) messages):date ntdata }
-   "$time"   -> if ((snd.gmcToNd.head) messages) `elem` (map snd (time ntdata)) then ntdata else ntdata { time = ((gmcToNd.head) messages):time ntdata }
-   "$locale" -> if ((snd.gmcToNd.head) messages) `elem` (map snd (locale ntdata)) then ntdata else ntdata { locale = ((gmcToNd.head) messages):locale ntdata }
-   _         -> ntdata
-  )
+--createNoticeData :: [GetMessageCreate] -> NoticeData -> NoticeData
+--createNoticeData messages ntdata = if null messages || noticeAll ntdata then ntdata else createNoticeData (tail messages) (
+--  case (T.unpack.parampart.head) messages of
+--   "$notice" -> if (T.null.notice) ntdata then ntdata{notice = (texttwopart.head) messages} else ntdata
+--   "$date"   -> if ((snd.gmcToNd.head) messages) `elem` (map snd (date ntdata)) then ntdata else ntdata { date = ((gmcToNd.head) messages):date ntdata }
+--   "$time"   -> if ((snd.gmcToNd.head) messages) `elem` (map snd (time ntdata)) then ntdata else ntdata { time = ((gmcToNd.head) messages):time ntdata }
+--   "$locale" -> if ((snd.gmcToNd.head) messages) `elem` (map snd (locale ntdata)) then ntdata else ntdata { locale = ((gmcToNd.head) messages):locale ntdata }
+--   _         -> ntdata
+--  )
 
 
-gmcToNd :: GetMessageCreate -> (T.Text,Int)
-gmcToNd message = if (T.head.(!!1).head.textTolistlisttext.dmTotext) message == '-' then  (textothpart message, numpart message) else (texttwopart message, 1)
+--gmcToNd :: GetMessageCreate -> (T.Text,Int)
+--gmcToNd message = if (T.head.(!!1).head.textTolistlisttext.dmTotext) message == '-' then  (textothpart message, numpart message) else (texttwopart message, 1)
 
 noticeAll :: NoticeData -> Bool
 noticeAll ntdata = if (T.null.notice) ntdata || (null.date) ntdata || (null.time) ntdata || (null.locale) ntdata then False else True
@@ -246,33 +247,33 @@ rtCheck postdata = do
                       postRT ((fst.head) rtl) 
                       loop (tail rtl) pdt )
 
-remindCheck :: (T.Text -> PostData -> [GetMessageCreate] -> IO T.Text) ->  PostData -> IO PostData
-remindCheck ptfunc postdata = do
- today <- zonedTimeToLocalTime<$>getZonedTime
- case divMod ((todHour.localTimeOfDay) today) 12 of
-  (0,_)  -> return postdata { noon = False }
-  (1,0)  -> getDirectoryContents reminddir >>= (\fs -> loop postdata today ptfunc (map (reminddir++) fs))
-  (1,_)  -> return postdata { noon = True }
-  where
-   loop :: PostData -> LocalTime -> (T.Text -> PostData -> [GetMessageCreate] -> IO T.Text) -> [FilePath] -> IO PostData
-   loop pd td ptfunc file = if null file || noon pd then return pd { noon = True }
-    else (doesFileExist.head) file >>= 
-     (\check -> if not check then loop pd td ptfunc (tail file)
-     else ( do
-      (getWeek, time, text)<-(\f->((read.T.unpack.head) f
-                                  ,(head.tail) f
-                                  ,(T.unlines.tail.tail) f)).T.lines<$>TIO.readFile (head file)
-      if dayToWeek td /= ((toEnum :: Int -> Week) getWeek) then loop pd td ptfunc (tail file)
-      else ( do
-       (ft,lt) <- getNum ':' time (25,61)
-       case makeTimeOfDayValid ft lt 0 of
-        Nothing  -> loop pd td ptfunc (tail file)
-        Just tod -> ( do
-         postid_str <- ptfunc text pd []
-         ctz <- getCurrentTimeZone
-         if T.null postid_str then loop pd td ptfunc (tail file)
-         else loop pd{schedule = (postid_str, ZonedTime{zonedTimeZone = ctz, zonedTimeToLocalTime = td{localTimeOfDay = tod}}):(schedule pd)} 
-                   td ptfunc (tail file)))))
+--remindCheck :: (T.Text -> PostData -> [GetMessageCreate] -> IO T.Text) ->  PostData -> IO PostData
+--remindCheck ptfunc postdata = do
+-- today <- zonedTimeToLocalTime<$>getZonedTime
+-- case divMod ((todHour.localTimeOfDay) today) 12 of
+--  (0,_)  -> return postdata { noon = False }
+--  (1,0)  -> getDirectoryContents reminddir >>= (\fs -> loop postdata today ptfunc (map (reminddir++) fs))
+--  (1,_)  -> return postdata { noon = True }
+--  where
+--   loop :: PostData -> LocalTime -> (T.Text -> PostData -> [GetMessageCreate] -> IO T.Text) -> [FilePath] -> IO PostData
+--   loop pd td ptfunc file = if null file || noon pd then return pd { noon = True }
+--    else (doesFileExist.head) file >>= 
+--     (\check -> if not check then loop pd td ptfunc (tail file)
+--     else ( do
+--      (getWeek, time, text)<-(\f->((read.T.unpack.head) f
+--                                  ,(head.tail) f
+--                                  ,(T.unlines.tail.tail) f)).T.lines<$>TIO.readFile (head file)
+--      if dayToWeek td /= ((toEnum :: Int -> Week) getWeek) then loop pd td ptfunc (tail file)
+--      else ( do
+--       (ft,lt) <- getNum ':' time (25,61)
+--       case makeTimeOfDayValid ft lt 0 of
+--        Nothing  -> loop pd td ptfunc (tail file)
+--        Just tod -> ( do
+--         postid_str <- ptfunc text pd []
+--         ctz <- getCurrentTimeZone
+--         if T.null postid_str then loop pd td ptfunc (tail file)
+--         else loop pd{schedule = (postid_str, ZonedTime{zonedTimeZone = ctz, zonedTimeToLocalTime = td{localTimeOfDay = tod}}):(schedule pd)} 
+--                   td ptfunc (tail file)))))
 
 dayToWeek :: LocalTime -> Week
 dayToWeek day = do
