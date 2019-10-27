@@ -124,6 +124,13 @@ getTL botconf = do
   httpManager req botconf
  return $ eitherDecode $ responseBody response
 
+getMention :: [String] -> IO(Either String [GetMention])
+getMention botconf = do
+ response <- do
+  req <- parseRequest  "https://api.twitter.com/1.1/statuses/mentions_timeline.json?"
+  httpManager req botconf
+ return $ eitherDecode $ responseBody response
+
 getUser :: Text -> [String] -> IO (Either String [User])
 getUser screen_name botconf = do
  response <- do

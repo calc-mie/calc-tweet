@@ -4,14 +4,16 @@ import SlackAPI
 import TwitterAPI
 import Control.Exception
 import Control.Concurrent
-import Data.List
+import Control.Directory
+import System.IO
+import Control.Exception
+import Data.Time
+import qualified Data.List as L
 import qualified Data.Text.IO as TIO
 import qualified Data.Text as T
-import Data.Time
-import System.Directory
+import qualified Data.Vector as V
 
-data PostData = PostData { befts :: T.Text
-                         , calcweb :: [String] -- calc's post before
+data PostData = PostData { calcweb :: [String] -- calc's post before
                          , schedule :: [(T.Text, ZonedTime)] -- post text (twid, time)
                          , noon :: Bool
                          } deriving (Show)
@@ -39,39 +41,106 @@ calcwebdir = "/home/share/posts/posts-available/"
 srvcalcdir = "/srv/calc-web/posts"
 reminddir = "/usr/local/calc-tweet/reminder/"
 
+--permissionIndexes :: [T.Text] -> [User] -> Int -> [Int]
+--permissionIndexes dm puser index 
+-- | null dm                                    = []  
+-- | head dm `elem` (map gid_str puser) = index:permissionIndexes (tail dm) puser (index + 1)
+-- | otherwise                                          = permissionIndexes (tail dm) puser (index + 1)
+--
+--getPermitFromIndex :: [Int] -> [GetMessageCreate] -> [GetMessageCreate]
+--getPermitFromIndex ind mcs = if null ind then [] else (mcs!!head ind):getPermitFromIndex (tail ind) mcs
+--
+--dmTotext = gettext.getmessage_data.getmessage_create
+--textTolistlisttext = map T.words.T.lines
+--listlisttextTotext = T.init.T.unlines.map T.unwords
+--parampart = head.head.textTolistlisttext.dmTotext
+--texttwopart = listlisttextTotext.(\n->(tail.head)n:(tail n)).textTolistlisttext.dmTotext
+--textothpart = listlisttextTotext.(\n->(tail.tail.head)n:(tail n)).textTolistlisttext.dmTotext
+--numpart = read.T.unpack.T.tail.head.tail.T.words.dmTotext
 
-permissionIndexes :: [T.Text] -> [User] -> Int -> [Int]
-permissionIndexes dm puser index 
- | null dm                                    = []  
- | head dm `elem` (map gid_str puser) = index:permissionIndexes (tail dm) puser (index + 1)
- | otherwise                                          = permissionIndexes (tail dm) puser (index + 1)
+monitoring :: MVar V.Vector GetMention -> PostData -> [String] -> IO PostData
+monitoring msgq pd botconf = do
+ threadDelay(mentiont)
+ postdata <- (rtCheck pd >>= remindCheck typeTL)-- monitoring retweeting
+ pusr <- getPermitUser 1
+ tlmention <- (\t -> case t of Left  e -> error e
+                               Right l -> (V.reverce.V.fromList) l <$> getMention (pack "") botconf
+ if (gm_str.V.head) tlmention == befts pd then monitoring msgq pd
+ else do
+  nowq <- readMVar msgq 
+  if V.null nowq then do
+   putMVar msgq tlmention
+   forkIO $ cmdCheck msgq botconf pd
+  else do
+   befq <- takeMVar msgq 
+   putMVar (befq V.++ (V.filter (\x -> filterUserElem x puser && filterCmdCalcTweet x) tlmention)) -- user and command checking
+  monitoring msgq postdata
+ where
+  filterUserElem x   = V.or.V.map (V.elem ((gid_str.gmuser) x))
+  filterCmdCalcTweet = (=="calc-tweet").Prelude.head.Prelude.head.Prelude.map T.words.T.lines.gmid_str
 
-getPermitFromIndex :: [Int] -> [GetMessageCreate] -> [GetMessageCreate]
-getPermitFromIndex ind mcs = if null ind then [] else (mcs!!head ind):getPermitFromIndex (tail ind) mcs
+cmdCheck :: MVar V.Vector GetMention -> [String] -> PostData -> IO PostData
+cmdCheck msgq botconf postdata = 
+ nowq <- readMVar msgq  
+ if V.null nowq then return postdata
+ else do
+  pd <- (case filterCmd nowq 1 of
+              "tweet" -> tweetCmd 
+              "user"  -> userCmd
+              "web"   -> webCmd
+              _       -> errorCmd) V.head nowq botconf postdata 
+  takeMVar msgq >>= \x -> (putMVar msgq.V.tail) x
+  cmdCheck msgq botconf pd
 
-dmTotext = gettext.getmessage_data.getmessage_create
-textTolistlisttext = map T.words.T.lines
-listlisttextTotext = T.init.T.unlines.map T.unwords
-parampart = head.head.textTolistlisttext.dmTotext
-texttwopart = listlisttextTotext.(\n->(tail.head)n:(tail n)).textTolistlisttext.dmTotext
-textothpart = listlisttextTotext.(\n->(tail.tail.head)n:(tail n)).textTolistlisttext.dmTotext
-numpart = read.T.unpack.T.tail.head.tail.T.words.dmTotext
+tweetCmd :: GetMention -> [String] -> PostData -> IO PostData
+tweetCmd msg botconf postdata = (case filterCmd msg 2 of
+ "post"      -> twpsCmd 
+ "broadcast" -> twbdCmd 
+ "rm"        -> twrmCmd 
+ "set"       -> twstCmd 
+ _           -> errorCmd) msg botconf postdata
+
+userCmd ::GetMention -> [String] -> PostData -> IO PostData
+userCmd msg botconf postdata = (case filterCmd msg 2 of
+ "add"       -> uaddCmd
+ "rm"        -> urmCmd 
+ "broadcast" -> ubrCmd
+ _           -> errorCmd) msg botconf postdata
+
+webCmd :: GetMention -> [String] -> PostData -> IO PostData
+webCmd msg botconf postdata = 
+
+errorCmd :: GetMention -> [String] -> PostData -> IO PostData
+errorCmd msg botconf postdata = 
+
+filterCmd vmsgq n = (Prelude.!! n.Prelude.head.Prelude.map T.words.T.lines.gmid_str.V.head) vmsgq 
+
+getPermitUser :: Int -> IO [T.Text]
+getPermitUser 1 = (\p -> case p of Left  e -> error e -- pusermittions
+                                   Right l ->(Prelude.map ((\(a,b,c,d) ->a).L.splitOn ",")T.lines) l <$> TIO.readFile permitconf)
+getPermitUser 2 = (\p -> case p of Left  e -> error e -- pusermittions
+                                   Right l ->(Prelude.map ((\(a,b,c,d) ->b).L.splitOn ",")T.lines) l <$> TIO.readFile permitconf)
+getPermitUser 3 = (\p -> case p of Left  e -> error e -- pusermittions
+                                   Right l ->(Prelude.map ((\(a,b,c,d) ->c).L.splitOn ",")T.lines) l <$> TIO.readFile permitconf)
+getPermitUser 4 = (\p -> case p of Left  e -> error e -- pusermittions
+                                   Right l ->(Prelude.map ((\(a,b,c,d) ->d).L.splitOn ",")T.lines) l <$> TIO.readFile permitconf)
+getPermitUser _ = error "getPermitUser :: Int -> IO [T.Text]"
 
 setPostData :: (T.Text, [String],[(T.Text,ZonedTime)], Bool) -> PostData
 setPostData (beforets, web, sche, non) = PostData { befts = beforets, calcweb = web , schedule = sche, noon = non }
 
-postTweet :: PostData -> [GetMessageCreate] -> (T.Text -> PostData -> [GetMessageCreate] -> IO T.Text) -> IO PostData
-postTweet postdata tw ptfunc= do 
- let ntdata = createNoticeData (takeWhile (((\x -> (x/=(T.pack "$clear")) && (x/=(T.pack "$post"))).head.head.textTolistlisttext.dmTotext)) tw)
-                               NoticeData{notice = T.pack "", date = [], time = [], locale =[]}
- if (T.null.notice) ntdata then return postdata
- else (do
-  posttw <- TIO.readFile noticetempconf
-  let posttx = makeTweet ntdata 1 ((maximum.map (maximum.map snd.((T.pack "null",0):)))[date ntdata, time ntdata, locale ntdata]) 
-                                                                (T.append posttw (T.append (notice ntdata) (T.pack "\n")))
-  postid_str <- ptfunc posttx postdata tw
-  if T.null postid_str then return postdata
-  else setNoticeTime  postdata ntdata postid_str >>= (\r->return postdata {schedule = r}) )
+--postTweet :: PostData -> [GetMessageCreate] -> (T.Text -> PostData -> [GetMessageCreate] -> IO T.Text) -> IO PostData
+--postTweet postdata tw ptfunc= do 
+-- let ntdata = createNoticeData (takeWhile (((\x -> (x/=(T.pack "$clear")) && (x/=(T.pack "$post"))).head.head.textTolistlisttext.dmTotext)) tw)
+--                               NoticeData{notice = T.pack "", date = [], time = [], locale =[]}
+-- if (T.null.notice) ntdata then return postdata
+-- else (do
+--  posttw <- TIO.readFile noticetempconf
+--  let posttx = makeTweet ntdata 1 ((maximum.map (maximum.map snd.((T.pack "null",0):)))[date ntdata, time ntdata, locale ntdata]) 
+--                                                                (T.append posttw (T.append (notice ntdata) (T.pack "\n")))
+--  postid_str <- ptfunc posttx postdata tw
+--  if T.null postid_str then return postdata
+--  else setNoticeTime  postdata ntdata postid_str >>= (\r->return postdata {schedule = r}) )
 
 calcWebPost :: PostData -> [GetMessageCreate] -> (T.Text -> PostData -> [GetMessageCreate] -> IO T.Text) -> IO PostData
 calcWebPost postdata tw ptfunc= do
@@ -109,26 +178,26 @@ gmcToNd message = if (T.head.(!!1).head.textTolistlisttext.dmTotext) message == 
 noticeAll :: NoticeData -> Bool
 noticeAll ntdata = if (T.null.notice) ntdata || (null.date) ntdata || (null.time) ntdata || (null.locale) ntdata then False else True
  
-makeTweet :: NoticeData -> Int -> Int -> T.Text -> T.Text
-makeTweet ntdata n mx tw = if n>mx then tw else 
- makeTweet ntdata (n+1) mx (if n `elem` concatMap (map snd) [date ntdata, time ntdata, locale ntdata] then
-                             T.append tw (
-                             T.append (elemText n (date ntdata)) (
-                             T.append (elemText n (time ntdata)) (
-                             T.append (if (T.null.elemText n) (locale ntdata) then T.pack "" 
-                                                else T.append (T.pack "＠.") (elemText n (locale ntdata))) (T.pack "\n"))))  -- createSchedule
-                             else tw)
+--makeTweet :: NoticeData -> Int -> Int -> T.Text -> T.Text
+--makeTweet ntdata n mx tw = if n>mx then tw else 
+-- makeTweet ntdata (n+1) mx (if n `elem` concatMap (map snd) [date ntdata, time ntdata, locale ntdata] then
+--                             T.append tw (
+--                             T.append (elemText n (date ntdata)) (
+--                             T.append (elemText n (time ntdata)) (
+--                             T.append (if (T.null.elemText n) (locale ntdata) then T.pack "" 
+--                                                else T.append (T.pack "＠.") (elemText n (locale ntdata))) (T.pack "\n"))))  -- createSchedule
+--                             else tw)
 
 elemText :: Int -> [(T.Text, Int)] -> T.Text
 elemText n text = if (n `notElem` map snd text) then T.pack "" 
                         else T.append ((fst.head.filter ((==n).snd)) text) (T.pack " ")
 
-userAdd :: PostData -> [GetMessageCreate] -> IO PostData
-userAdd postdata tw = do
- let user = ((T.drop 9.gettext.getmessage_data.getmessage_create.head) tw)
- permituser <- T.lines<$>TIO.readFile permitconf
- if user `notElem` permituser then (TIO.appendFile permitconf user >> return postdata)
- else return postdata 
+--userAdd :: PostData -> [GetMessageCreate] -> IO PostData
+--userAdd postdata tw = do
+-- let user = ((T.drop 9.gettext.getmessage_data.getmessage_create.head) tw)
+-- permituser <- T.lines<$>TIO.readFile permitconf
+-- if user `notElem` permituser then (TIO.appendFile permitconf user >> return postdata)
+-- else return postdata 
 
 setNoticeTime :: PostData -> NoticeData -> T.Text -> IO [(T.Text,ZonedTime)]
 setNoticeTime pdt ndt res = loop 1 ((maximum.map (maximum.map snd.((T.pack "null",0):)))[date ndt, time ndt]) [date ndt, time ndt] pdt
