@@ -87,7 +87,9 @@ data PostEvent = PostEvent { postevent :: PostMessageCreate
 $(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 4 } ''PostEvent)
 
 --post TL parser
-data Tweet = Tweet { text :: Text} deriving (Show)
+data Tweet = Tweet { text :: Text
+                   , id_str :: Text
+                   , in_reply_to_statis_id_str :: Text} deriving (Show)
 $(deriveJSON defaultOptions  ''Tweet)
 
 data PostTL = PostTL { id_str :: Text} deriving (Show)
@@ -124,10 +126,18 @@ getTL botconf = do
   httpManager req botconf
  return $ eitherDecode $ responseBody response
 
+getUserTL :: Text -> Text -> [String] -> IO (Either String [Tweet])
+getUserTL user_id since_id botconf = do
+ response <- do
+  req <- parseRequest "https://api.twitter.com/1.1/statuses/home_timeline.json?count=200&user_id=" ++ unpack user_id ++
+                                                                                       "&since_id=" ++ unpack since_id
+  httpManager req botconf
+ return $ eitherDecode $ responseBody response
+
 getMention :: [String] -> IO(Either String [GetMention])
 getMention botconf = do
  response <- do
-  req <- parseRequest  "https://api.twitter.com/1.1/statuses/mentions_timeline.json?"
+  req <- parseRequest  "https://api.twitter.com/1.1/statuses/mentions_timeline.json"
   httpManager req botconf
  return $ eitherDecode $ responseBody response
 

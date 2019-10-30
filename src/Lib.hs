@@ -2,6 +2,7 @@ module Lib where
 
 import SlackAPI
 import TwitterAPI
+
 import Control.Exception
 import Control.Concurrent
 import Control.Directory
@@ -13,16 +14,21 @@ import qualified Data.Text.IO as TIO
 import qualified Data.Text as T
 import qualified Data.Vector as V
 
-data PostData = PostData { calcweb :: [String] -- calc's post before
-                         , schedule :: [(T.Text, ZonedTime)] -- post text (twid, time)
-                         , noon :: Bool
-                         } deriving (Show)
+-- have to MVector
+data PostQueue = PostQueue { mentions :: V.Vector GetMention
+                           , schedule :: V.Vector (T.Text, ZonedTime) -- twid, retweet time
+                           } deriving (Show)
 
-data NoticeData = NoticeData { notice :: T.Text
-                             , date :: [(T.Text,Int)]
-                             , time :: [(T.Text,Int)]
-                             , locale :: [(T.Text,Int)]
-                             } deriving (Show)
+--data PostData = PostData { calcweb :: [String] -- calc's post before
+--                         , schedule :: [(T.Text, ZonedTime)] -- post text (twid, time)
+--                         , noon :: Bool
+--                         } deriving (Show)
+
+--data NoticeData = NoticeData { notice :: T.Text
+--                             , date :: [(T.Text,Int)]
+--                             , time :: [(T.Text,Int)]
+--                             , locale :: [(T.Text,Int)]
+--                             } deriving (Show)
 
 data Week = Monday
           | Tuesday
@@ -57,72 +63,139 @@ reminddir = "/usr/local/calc-tweet/reminder/"
 --texttwopart = listlisttextTotext.(\n->(tail.head)n:(tail n)).textTolistlisttext.dmTotext
 --textothpart = listlisttextTotext.(\n->(tail.tail.head)n:(tail n)).textTolistlisttext.dmTotext
 --numpart = read.T.unpack.T.tail.head.tail.T.words.dmTotext
+ 
+-- case directmessage of 
+--  Left err -> monitoring postdata
+--  Right dm -> if befts pd == (getcreated_timestamp . head . getevents) dm 
+--               then monitoring postdata
+--              else do
+--               pusr <- (TIO.readFile permitconf >>= getUser.T.intercalate (T.pack ",").T.lines)
+--               case pusr of
+--                Left err             -> monitoring postdata
+--                Right permissionuser -> ( do
+--                 let puser = permissionIndexes ((map sender_idpart) ((getevents) dm)) permissionuser 0
+--                 cmdCheck (postdata{befts = (getcreated_timestamp . head . getevents) dm }) ((V.fromList.getevents) dm) (
+--                  case elemIndex (befts pd) (map getcreated_timestamp (getevents dm)) of 
+--                   Nothing -> (length.map getcreated_timestamp) (getevents dm)
+--                   Just n  -> (n-1) ) >>= monitoring )
 
-monitoring :: MVar V.Vector GetMention -> PostData -> [String] -> IO PostData
-monitoring msgq pd botconf = do
+   
+--cmdCheck :: PostData -> V.Vector GetMessageCreate -> Int -> IO PostData 
+--cmdCheck postdata tw n
+-- | n < 0                 = return postdata
+-- | otherwise             = 
+--  case (T.unpack.head.head.map T.words.T.lines.gettext.getmessage_data.getmessage_create) (tw V.! n) of
+--   "$post"          -> postTweet postdata ((filter ((==sender_idpart (tw V.! n)).sender_idpart).V.toList.V.drop (n+1)) tw) typeTL >>= (\ret -> cmdCheck ret tw (n-1))
+--   "$print"         -> postTweet postdata ((filter ((==sender_idpart (tw V.! n)).sender_idpart).V.toList.V.drop (n+1)) tw) typeDM >>= (\ret -> cmdCheck ret tw (n-1))
+--   "$post-calc-web" -> calcWebPost postdata ((V.toList.V.drop (n+1)) tw) typeTL >>= (\ret -> cmdCheck ret tw (n-1))
+--   "$useradd"       -> userAdd postdata ((V.toList.V.drop (n+1)) tw) >>= (\ret -> cmdCheck ret tw (n-1))
+--   _                -> cmdCheck postdata tw (n-1)
+--
+--sender_idpart = getsender_id.getmessage_create
+
+
+monitoring :: MVar PostQueue -> [String] -> IO ()
+monitoring msgq botconf = do
  threadDelay(mentiont)
- postdata <- (rtCheck pd >>= remindCheck typeTL)-- monitoring retweeting
+ (rtCheck pd >>= remindCheck typeTL)-- monitoring retweeting
  pusr <- getPermitUser 1
  tlmention <- (\t -> case t of Left  e -> error e
-                               Right l -> (V.reverce.V.fromList) l <$> getMention (pack "") botconf
- if (gm_str.V.head) tlmention == befts pd then monitoring msgq pd
+                               Right l -> (V.reverse.V.fromList) l) <$> getMention (pack "") botconf
+ if (gm_str.V.head) tlmention then monitoring msgq botconf
  else do
   nowq <- readMVar msgq 
-  if V.null nowq then do
-   putMVar msgq tlmention
-   forkIO $ cmdCheck msgq botconf pd
+  if (V.null.mentions) nowq then do
+   putMVar msgq nowq{ mentions = (V.filter (\x -> filterUserElem x puser && filterCmdCalcTweet x) tlmention }
+   forkIO $ cmdCheck msgq botconf 
   else do
-   befq <- takeMVar msgq 
-   putMVar (befq V.++ (V.filter (\x -> filterUserElem x puser && filterCmdCalcTweet x) tlmention)) -- user and command checking
-  monitoring msgq postdata
+   befq <- (mentions.takeMVar) msgq 
+   putMVar befq {mentions = (befq V.++ (V.filter (\x -> filterUserElem x puser && filterCmdCalcTweet x) tlmention))} -- user and command checking
+  monitoring msgq botconf
  where
   filterUserElem x   = V.or.V.map (V.elem ((gid_str.gmuser) x))
   filterCmdCalcTweet = (=="calc-tweet").Prelude.head.Prelude.head.Prelude.map T.words.T.lines.gmid_str
 
-cmdCheck :: MVar V.Vector GetMention -> [String] -> PostData -> IO PostData
-cmdCheck msgq botconf postdata = 
+cmdCheck :: MVar PostQueue -> [String] -> IO ()
+cmdCheck msgq botconf = 
  nowq <- readMVar msgq  
- if V.null nowq then return postdata
+ if (V.null.mentions) nowq then return ()
  else do
   pd <- (case filterCmd nowq 1 of
               "tweet" -> tweetCmd 
               "user"  -> userCmd
-              "web"   -> webCmd
-              _       -> errorCmd) V.head nowq botconf postdata 
-  takeMVar msgq >>= \x -> (putMVar msgq.V.tail) x
-  cmdCheck msgq botconf pd
+--            "web"   -> webCmd
+              _       -> errorCmd) nowq botconf
+  deleteOrAdd msgq pd 
+  cmdCheck msgq botconf 
+   where
+    deleteOrAdd q d = takeMVar msgq >>= \x -> putMVar msgq x{mentions = (V.tail.menitons)x
+                                                            , if V.null d then schedule = schedule x
+                                                              else schedule = schedule x V.++ d
+                                                            }
 
-tweetCmd :: GetMention -> [String] -> PostData -> IO PostData
-tweetCmd msg botconf postdata = (case filterCmd msg 2 of
- "post"      -> twpostCmd 
+-- tweet command 
+tweetCmd :: PostQueue -> [String] -> IO V.Vector (T.Text, ZonedTime)
+tweetCmd msg botconf = (case filterCmd msg 2 of
+ "post"      -> twpostCmd
  "broadcast" -> twbroadCmd 
  "rm"        -> twrmCmd 
  "set"       -> twsetCmd 
  _           -> errorCmd) msg botconf postdata
 
-userCmd ::GetMention -> [String] -> PostData -> IO PostData
-userCmd msg botconf postdata = (case filterCmd msg 2 of
+twpostCmd :: PostQueue -> [String] -> IO V.Vector (T.Text, ZonedTime)
+twpostCmd msg botconf = do
+ let user_id  = (gid_str.gmuser) msg    -- twitter api name
+     since_id = (read.mgid_str) msg - 1 -- twitter api name 
+ userTL <- (\t -> case t of  Left e  -> error e
+                             Right l -> V.fromList l) <$> getUserTL user_id since_id botconf
+ let postTarget = searchReplyTree userTL -- search and sed
+ postTweet postTarget botconf 
+
+twbroadcastCmd :: PostQueue -> [String] -> IO V.Vector (T.Text, ZonedTime)
+twbroadcastCmd msg botconf = do
+
+twrmCmd :: PostQueue -> [String] -> IO V.Vector (T.Text, ZonedTime)
+twrmCmd msg botconf = do
+
+twsetCmd :: PostQueue -> [String] -> IO V.Vector (T.Text, ZonedTime)
+twsetCmd msg botconf = do
+
+-- user command
+userCmd :: PostQueue -> [String] -> IO V.Vector (T.Text, ZonedTime)
+userCmd msg botconf = (case filterCmd msg 2 of
  "add"       -> uaddCmd
  "rm"        -> urmCmd 
- "broadcast" -> ubroadCmd
- _           -> errorCmd) msg botconf postdata
+ "broadcast" -> ubroadcastCmd
+ _           -> errorCmd) msg botconf
 
-webCmd :: GetMention -> [String] -> PostData -> IO PostData -- post web
-webCmd msg botconf postdata = calcWebPost postdata msg botconf typeTL
+uaddCmd :: PostQueue -> [String] -> IO V.Vector (T.Text, ZonedTime)
+uaddCmd msg botconf = do
 
-errorCmd :: GetMention -> [String] -> PostData -> IO PostData -- post error
-errorCmd msg botconf postdata = 
+urmCmd :: PostQueue -> [String] -> IO V.Vector (T.Text, ZonedTime)
+urmCmd msg botconf = do
+
+ubroadcastCmd :: PostQueue -> [String] -> IO V.Vector (T.Text, ZonedTime)
+ubroadcastCmd msg botconf = do
+
+-- we command comming soon?
+--webCmd :: MVar PostQueue -> [String] -> IO V.Vector (T.Text, ZonedTime) -- post web
+--webCmd msg botconf postdata = calcWebPost postdata msg botconf typeTL
+
+-- command error post
+errorCmd :: PostQueue -> [String] -> IO V.Vector (T.Text, ZonedTime) -- post error
+errorCmd msg botconf = 
 
 filterCmd vmsgq n = (Prelude.!! n.Prelude.head.Prelude.map T.words.T.lines.gmid_str.V.head) vmsgq 
 
+-- have to change
 getPermitUser :: Int -> IO [T.Text]
-getPermitUser 1 = (\p -> case p of Left  e -> error e -- pusermittions
+getPermitUser 1 = (\p -> case p of Left  e -> error e -- username (screen_name)
                                    Right l ->(Prelude.map ((\(a,b,c,d) ->a).L.splitOn ",")T.lines) l <$> TIO.readFile permitconf)
-getPermitUser 2 = (\p -> case p of Left  e -> error e -- pusermittions
+getPermitUser 2 = (\p -> case p of Left  e -> error e -- permition to use calc-tweet
                                    Right l ->(Prelude.map ((\(a,b,c,d) ->b).L.splitOn ",")T.lines) l <$> TIO.readFile permitconf)
-getPermitUser 3 = (\p -> case p of Left  e -> error e -- pusermittions
+getPermitUser 3 = (\p -> case p of Left  e -> error e -- permition to add other user use calc-tweet
                                    Right l ->(Prelude.map ((\(a,b,c,d) ->c).L.splitOn ",")T.lines) l <$> TIO.readFile permitconf)
-getPermitUser 4 = (\p -> case p of Left  e -> error e -- pusermittions
+getPermitUser 4 = (\p -> case p of Left  e -> error e -- allow to broadcast
                                    Right l ->(Prelude.map ((\(a,b,c,d) ->d).L.splitOn ",")T.lines) l <$> TIO.readFile permitconf)
 getPermitUser _ = error "getPermitUser :: Int -> IO [T.Text]"
 
