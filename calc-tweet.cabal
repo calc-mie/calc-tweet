@@ -43,6 +43,7 @@ library
     , slack-api
     , mtl
     , directory
+    , vector
   default-language: Haskell2010
 
 executable calc-tweet

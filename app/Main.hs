@@ -17,8 +17,6 @@ import System.Directory
 import System.IO
 import Control.Exception
 
-emptyint = 1*1000*1000 {- 1 second -}
-mentiont = 12*1000*1000 {-12 second -}
 
 main = do
  -- calcweb-post

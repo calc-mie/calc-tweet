@@ -17,7 +17,7 @@ module TwitterAPI ( permitconf
                   , Tweet (..)
                   , PostTL (..)
                   , User (..)
-                  , getMention (..)
+                  , GetMention (..)
                   , getGetDM
                   , getTL
                   , getUser
@@ -26,6 +26,7 @@ module TwitterAPI ( permitconf
                   , tweet
                   , getAPIkeys ) where
 
+import System.IO
 import Control.Concurrent
 import Data.Text
 import Data.Text.IO 
@@ -92,8 +93,8 @@ data Tweet = Tweet { text :: Text
                    , in_reply_to_statis_id_str :: Text} deriving (Show)
 $(deriveJSON defaultOptions  ''Tweet)
 
-data PostTL = PostTL { id_str :: Text} deriving (Show)
-$(deriveJSON defaultOptions ''PostTL)
+data PostTL = PostTL { post_tl_id_str :: Text} deriving (Show)
+$(deriveJSON defaultOptions {fieldLabelModifier = Prelude.drop 8 } ''PostTL)
 
 --get User parser
 data User = User { gid_str :: Text } deriving (Show)
@@ -103,41 +104,41 @@ $(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 1 }  ''User)
 data GetMention = GetMention { gmid_str :: Text
                              , gmtext   :: Text
                              , gmuser   :: User} deriving (Show)
-$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 2 }  ''User)
+$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 2 }  ''GetMention)
 
 getGetDM :: [String] -> IO (Either String GetEvents)
 getGetDM botconf = do
  response <- do
-  req <- parseRequest  "https://api.twitter.com/1.1/direct_messages/events/list.json"
+  req <- parseRequest $ "https://api.twitter.com/1.1/direct_messages/events/list.json"
   httpManager req botconf
  return $ eitherDecode $ responseBody response
 
 getMyTweet :: [String] -> IO(Either String [Tweet])
 getMyTweet botconf = do
  response <- do
-  req <- parseRequest  "https://api.twitter.com/1.1/statuses/user_timeline.json"
+  req <- parseRequest $ "https://api.twitter.com/1.1/statuses/user_timeline.json"
   httpManager req botconf
  return $ eitherDecode $ responseBody response
 
 getTL :: [String] -> IO (Either String [Tweet])
 getTL botconf = do
  response <- do
-  req <- parseRequest  "https://api.twitter.com/1.1/statuses/home_timeline.json?count=1"
+  req <- parseRequest $ "https://api.twitter.com/1.1/statuses/home_timeline.json?count=1"
   httpManager req botconf
  return $ eitherDecode $ responseBody response
 
 getUserTL :: Text -> Text -> [String] -> IO (Either String [Tweet])
 getUserTL user_id since_id botconf = do
  response <- do
-  req <- parseRequest "https://api.twitter.com/1.1/statuses/home_timeline.json?count=200&user_id=" ++ unpack user_id ++
-                                                                                       "&since_id=" ++ unpack since_id
+  req <- parseRequest $ "https://api.twitter.com/1.1/statuses/home_timeline.json?count=200&user_id=" ++ unpack user_id ++
+                                                                                         "&since_id=" ++ unpack since_id
   httpManager req botconf
  return $ eitherDecode $ responseBody response
 
 getMention :: [String] -> IO(Either String [GetMention])
 getMention botconf = do
  response <- do
-  req <- parseRequest  "https://api.twitter.com/1.1/statuses/mentions_timeline.json"
+  req <- parseRequest $ "https://api.twitter.com/1.1/statuses/mentions_timeline.json"
   httpManager req botconf
  return $ eitherDecode $ responseBody response
 
@@ -159,10 +160,16 @@ postRT twid botconf = do
 tweet :: Text -> [String] -> IO (Either String PostTL)
 tweet tw botconf = do
  responce <- do
-  req     <- parseRequest "https://api.twitter.com/1.1/statuses/update.json"
+  req     <- parseRequest $ "https://api.twitter.com/1.1/statuses/update.json"
   let postReq = urlEncodedBody [("status", encodeUtf8 tw)] req
   httpManager postReq botconf
  return $ eitherDecode $ responseBody responce
+
+rmTweet :: Text -> [String] -> IO()
+rmTweet twid botconf = do
+ req     <- parseRequest $ "https://api.twitter.com/1.1/statuses/destroy.json?id=" ++ unpack twid
+ httpManager req botconf
+ return ()
 
 postDM :: Text -> Text -> [String] -> IO ()
 postDM tw un botconf = do
