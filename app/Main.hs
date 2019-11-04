@@ -26,11 +26,11 @@ main = do
  botconf <- getAPIkeys ["API key :", "API secret key :", "Access token :", "Access token secret :"]
  hSetEcho stdin True
  -- message queue
- msgqueue <- newMVar [] :: IO (MVar V.Vector PostQueue)
+ msgqueue <- newMVar PostQueue{mentions = V.empty, schedule = V.empty } :: IO (MVar PostQueue)
  -- main
  tlmention <- (\t -> case t of Left  e -> error e
-                               Right l -> (gmid_str.L.last) l) <$> getMention (pack "") botconf
- monitoring msgqueue (setPostData ((gmid_str.L.head) tlmention) oldcalcweb, [], Flase) botconf
+                               Right l -> (gmid_str.Prelude.head) l) <$> getMention T.empty botconf
+ monitoring msgqueue tlmention botconf
  -- get mentions timeline
  -- main
 -- direct_message <- getGetDM
@@ -38,20 +38,20 @@ main = do
 --  Right dm -> monitoring (setPostData ((getcreated_timestamp . head . getevents) dm, oldcalcweb, [], False)) >> putStrLn "fin"
 
 
-typeDM :: T.Text -> PostData -> GetMention -> [String] -> IO T.Text
-typeDM posttx postdata tw botconf = do
- postDM posttx ((getsender_id.getmessage_create.head) tw) botconf
- return (T.pack "")
-
-typeTL :: T.Text -> PostData -> GetMention -> [String] -> IO T.Text
-typeTL posttx postdata tw botconf = do 
- response <- tweet posttx botconf
- postSlack posttx
- case response of
-  Left err -> return (T.pack "")
-  Right re -> return (id_str re)
-
-typeTerm :: T.Text -> PostData -> GetMention -> [String] -> IO T.Text 
-typeTerm posttx postdata tw botconf = do
- print posttx
- return (T.pack "")
+--typeDM :: T.Text -> PostData -> GetMention -> [String] -> IO T.Text
+--typeDM posttx postdata tw botconf = do
+-- postDM posttx ((getsender_id.getmessage_create.head) tw) botconf
+-- return (T.pack "")
+--
+--typeTL :: T.Text -> PostData -> GetMention -> [String] -> IO T.Text
+--typeTL posttx postdata tw botconf = do 
+-- response <- tweet posttx botconf
+-- postSlack posttx
+-- case response of
+--  Left err -> return (T.pack "")
+--  Right re -> return (id_str re)
+--
+--typeTerm :: T.Text -> PostData -> GetMention -> [String] -> IO T.Text 
+--typeTerm posttx postdata tw botconf = do
+-- print posttx
+-- return (T.pack "")

@@ -21,6 +21,9 @@ module TwitterAPI ( permitconf
                   , getGetDM
                   , getTL
                   , getUser
+                  , getUserTL
+                  , getMention
+                  , rmTweet
                   , postRT
                   , postDM
                   , tweet
@@ -90,7 +93,7 @@ $(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 4 } ''PostEvent)
 --post TL parser
 data Tweet = Tweet { text :: Text
                    , id_str :: Text
-                   , in_reply_to_statis_id_str :: Text} deriving (Show)
+                   , in_reply_to_status_id_str :: Text} deriving (Show)
 $(deriveJSON defaultOptions  ''Tweet)
 
 data PostTL = PostTL { post_tl_id_str :: Text} deriving (Show)
@@ -135,10 +138,10 @@ getUserTL user_id since_id botconf = do
   httpManager req botconf
  return $ eitherDecode $ responseBody response
 
-getMention :: [String] -> IO(Either String [GetMention])
-getMention botconf = do
+getMention :: Text -> [String] -> IO(Either String [GetMention])
+getMention since_id botconf = do
  response <- do
-  req <- parseRequest $ "https://api.twitter.com/1.1/statuses/mentions_timeline.json"
+  req <- parseRequest $ "https://api.twitter.com/1.1/statuses/mentions_timeline.json?since_id" ++ unpack since_id
   httpManager req botconf
  return $ eitherDecode $ responseBody response
 
@@ -157,10 +160,11 @@ postRT twid botconf = do
  httpManager postReq botconf
  return ()
 
-tweet :: Text -> [String] -> IO (Either String PostTL)
-tweet tw botconf = do
+tweet :: Text -> Text -> [String] -> IO (Either String PostTL)
+tweet tw twid botconf = do
  responce <- do
-  req     <- parseRequest $ "https://api.twitter.com/1.1/statuses/update.json"
+  req     <- parseRequest $ "https://api.twitter.com/1.1/statuses/update.json" ++ if Data.Text.null twid then "" 
+                                                                                  else "?in_reply_to_status_id=" ++ unpack twid
   let postReq = urlEncodedBody [("status", encodeUtf8 tw)] req
   httpManager postReq botconf
  return $ eitherDecode $ responseBody responce
