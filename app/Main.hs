@@ -30,7 +30,8 @@ main = do
  -- main
  tlmention <- (\t -> case t of Left  e -> error e
                                Right l -> (gmid_str.Prelude.head) l) <$> getMention T.empty botconf
- monitoring msgqueue tlmention botconf
+ monitoring msgqueue tlmention botconf showTL
+
  -- get mentions timeline
  -- main
 -- direct_message <- getGetDM

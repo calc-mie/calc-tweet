@@ -100,68 +100,68 @@ mentiont = 12*1000*1000 {-12 second -}
 --sender_idpart = getsender_id.getmessage_create
 
 
-monitoring :: MVar PostQueue -> T.Text -> [String] -> IO ()
-monitoring msgq since_id botconf = do
+monitoring :: MVar PostQueue -> T.Text -> [String] -> (T.Text -> T.Text -> [String] -> IO(T.Text)) -> IO ()
+monitoring msgq since_id botconf func = do
  threadDelay mentiont
  --(rtCheck pd >>= remindCheck typeTL)-- monitoring retweeting
  tlmention <- (\t -> case t of Left  e -> error e
                                Right l -> (V.reverse.V.fromList) l) <$> getMention since_id botconf
  puser <- V.fromList.Prelude.map splitChar.T.lines <$> TIO.readFile permitconf
- if V.null tlmention then monitoring msgq since_id botconf
+ if V.null tlmention then monitoring msgq since_id botconf func
  else do
   nowq <- readMVar msgq 
   (if (V.null.mentions) nowq then do
    putMVar msgq nowq {mentions = V.filter (\x -> filterUserElem x puser && filterCmdCalcTweet x) tlmention}
-   forkIO $ cmdCheck msgq botconf 
+   forkIO $ cmdCheck msgq botconf func
    return ()
   else do
    befq <- takeMVar msgq 
    putMVar msgq befq{mentions = ((mentions befq) V.++ (V.filter (\x -> filterUserElem x puser && filterCmdCalcTweet x) tlmention))}
-   ) >> monitoring msgq ((gmid_str.V.head) tlmention) botconf
+   ) >> monitoring msgq ((gmid_str.V.head) tlmention) botconf func
  where
   filterUserElem :: GetMention -> V.Vector (T.Text, Bool, Bool, Bool) -> Bool
   filterUserElem x   = V.elem ((gid_str.gmuser) x).V.map (\(a,b,c,d) -> a)
   filterCmdCalcTweet = (=="calc-tweet").T.unpack.Prelude.head.T.words.gmtext
 
-cmdCheck :: MVar PostQueue -> [String] -> IO ()
-cmdCheck msgq botconf = readMVar msgq >>= \nowq -> if (V.null.mentions) nowq then return () else 
+cmdCheck :: MVar PostQueue -> [String] -> (T.Text -> T.Text -> [String] -> IO(T.Text)) -> IO ()
+cmdCheck msgq botconf func = readMVar msgq >>= \nowq -> if (V.null.mentions) nowq then return () else 
  do
   sc <- (case T.unpack (filterCmd nowq 1) of
               "tweet" -> tweetCmd 
               "user"  -> userCmd
 --            "web"   -> webCmd
-              _       -> errorCmd) nowq botconf
+              _       -> errorCmd) nowq botconf func
   addDeleteSchedule msgq sc  -- add or deleteschedule 
   threadDelay cmdt
-  cmdCheck msgq botconf
+  cmdCheck msgq botconf func
    where
     addDeleteSchedule q d = takeMVar msgq >>= \x -> putMVar msgq x{ mentions = (V.tail.mentions)x
                                                                   , schedule =  if V.null d then schedule x else schedule x V.++ d} 
     cmdt = 60*1000*1000 -- 1min
 
 -- tweet command 
-tweetCmd :: PostQueue -> [String] -> IO (V.Vector (T.Text, ZonedTime))
-tweetCmd msg botconf = (case T.unpack (filterCmd msg 2) of
+tweetCmd :: PostQueue -> [String] -> (T.Text -> T.Text -> [String] -> IO(T.Text)) -> IO (V.Vector (T.Text, ZonedTime))
+tweetCmd msg botconf func = (case T.unpack (filterCmd msg 2) of
  "post"      -> twpostCmd
  "broadcast" -> twbroadcastCmd 
  "rm"        -> twrmCmd 
  "help"      -> twHelpCmd
 -- "set"       -> twsetCmd 
- _           -> errorCmd) msg botconf
+ _           -> errorCmd) msg botconf func
 
-twpostCmd :: PostQueue -> [String] -> IO (V.Vector (T.Text, ZonedTime))
-twpostCmd msg botconf = getPermitUser ((gid_str.gmuser.V.head.mentions)msg) 1 >>= \x -> if not x then return V.empty else do
+twpostCmd :: PostQueue -> [String] -> (T.Text -> T.Text -> [String] -> IO(T.Text)) -> IO (V.Vector (T.Text, ZonedTime))
+twpostCmd msg botconf func = getPermitUser ((gid_str.gmuser.V.head.mentions)msg) 1 >>= \x -> if not x then return V.empty else do
  let user_id  = (gid_str.gmuser.V.head.mentions) msg    -- twitter api name
      since_id = getTweetId msg -- twitter api name 
  userTL <- (\t -> case t of  Left e  -> error e
                              Right l -> (V.reverse.V.fromList) l) <$> getUserTL user_id since_id botconf
  let postmsg    = T.pack $ '@':(T.unpack.gid_str.gmuser.V.head.mentions) msg ++ "post done."
      postTarget = searchReplyTree since_id userTL -- search and sed
- postTweet postmsg msg postTarget botconf 
+ postTweet postmsg msg postTarget botconf func
  return V.empty
 
-twbroadcastCmd :: PostQueue -> [String] -> IO (V.Vector (T.Text, ZonedTime))
-twbroadcastCmd msg botconf = getPermitUser ((gid_str.gmuser.V.head.mentions)msg) 1 >>= \x -> if not x then return V.empty else do
+twbroadcastCmd :: PostQueue -> [String] -> (T.Text -> T.Text -> [String] -> IO(T.Text)) -> IO (V.Vector (T.Text, ZonedTime))
+twbroadcastCmd msg botconf func = getPermitUser ((gid_str.gmuser.V.head.mentions)msg) 1 >>= \x -> if not x then return V.empty else do
  let user_id  = (gid_str.gmuser.V.head.mentions) msg    -- twitter api name
      since_id = getTweetId msg -- twitter api name
      postmsg  = T.pack $ '@':(T.unpack.gid_str.gmuser.V.head.mentions) msg ++ "post done."
@@ -169,25 +169,25 @@ twbroadcastCmd msg botconf = getPermitUser ((gid_str.gmuser.V.head.mentions)msg)
                              Right l -> (V.reverse.V.fromList) l) <$> getUserTL user_id since_id botconf
  broadTarget <- broadUsers 
  let postTarget = T.append broadTarget (searchReplyTree since_id userTL)-- search and sed
- postTweet postmsg msg postTarget botconf 
+ postTweet postmsg msg postTarget botconf func
  return V.empty
 
-twrmCmd :: PostQueue -> [String] -> IO (V.Vector (T.Text, ZonedTime))
-twrmCmd msg botconf = getPermitUser ((gid_str.gmuser.V.head.mentions)msg) 1 >>= \x -> if not x then return V.empty else do
+twrmCmd :: PostQueue -> [String] -> (T.Text -> T.Text -> [String] -> IO(T.Text)) -> IO (V.Vector (T.Text, ZonedTime))
+twrmCmd msg botconf func = getPermitUser ((gid_str.gmuser.V.head.mentions)msg) 1 >>= \x -> if not x then return V.empty else do
  let user_id  = (gid_str.gmuser.V.head.mentions) msg -- twitter api name
      since_id = getTweetId msg -- twitter api name
  userTL <- (\t -> case t of  Left e  -> error e
                              Right l -> (V.reverse.V.fromList) l) <$> getUserTL (T.pack "calc-mie") since_id botconf
  let postTarget = searchReplyId since_id userTL
      postmsg    = T.pack $ '@':(T.unpack.gid_str.gmuser.V.head.mentions) msg ++ "remove done."
- rmTweets postmsg msg postTarget botconf
+ rmTweets postmsg msg postTarget botconf func
  return V.empty
 
-twHelpCmd :: PostQueue -> [String] -> IO (V.Vector (T.Text, ZonedTime))
-twHelpCmd msg botconf = getPermitUser ((gid_str.gmuser.V.head.mentions)msg) 0 >>= \x -> if not x then return V.empty else do
+twHelpCmd :: PostQueue -> [String] -> (T.Text -> T.Text -> [String] -> IO(T.Text)) -> IO (V.Vector (T.Text, ZonedTime))
+twHelpCmd msg botconf func = getPermitUser ((gid_str.gmuser.V.head.mentions)msg) 0 >>= \x -> if not x then return V.empty else do
  let postTarget = T.empty
  postmsg <- T.append (T.pack ('@':((T.unpack.gid_str.gmuser.V.head.mentions) msg))) <$> TIO.readFile twHelpFile
- postTweet postmsg msg postTarget botconf
+ postTweet postmsg msg postTarget botconf func
  return V.empty
 
 -- comming soon?
@@ -211,55 +211,53 @@ scrapingId :: T.Text -> T.Text
 scrapingId text = if T.null text then T.empty else 
                   if T.head text == '/' then (scrapingId.T.tail) text else T.append ((T.singleton.T.head) text) ((scrapingId.T.tail) text)
 
-postTweet :: T.Text -> PostQueue -> T.Text -> [String] -> IO() 
-postTweet usermsg postq postTarget botconf = if T.null postTarget then return () else do
+postTweet :: T.Text -> PostQueue -> T.Text -> [String] -> (T.Text -> T.Text -> [String] -> IO(T.Text)) -> IO() 
+postTweet usermsg postq postTarget botconf func = if T.null postTarget then return () else do
  let msgs = splitN postTarget 140 -- 140 is twitter max size
- start_id <- (\t -> case t of Left  e -> error e
-                              Right t -> post_tl_id_str t) <$> tweet (Prelude.head msgs) (T.empty) botconf
- postTweetInReply (Prelude.tail msgs) start_id
- tweet usermsg ((gmid_str.V.head.mentions) postq) botconf
+ start_id <- func (Prelude.head msgs) (T.empty) botconf
+ postTweetInReply (Prelude.tail msgs) start_id func
+ func usermsg ((gmid_str.V.head.mentions) postq) botconf
  return ()
  where
   splitN :: T.Text -> Int -> [T.Text] 
   splitN raw max = if T.length raw <= max then [raw] else (T.take max raw):splitN (T.drop max raw) max
-  postTweetInReply :: [T.Text] -> T.Text -> IO()
-  postTweetInReply [] _         = return ()
-  postTweetInReply (x:xs) nowid = if T.null nowid then return () else do
-   nextid <- (\t -> case t of Left  e -> error e
-                              Right t -> post_tl_id_str t) <$> tweet x nowid botconf
-   postTweetInReply xs nextid
+  postTweetInReply :: [T.Text] -> T.Text -> (T.Text -> T.Text -> [String] -> IO (T.Text)) -> IO()
+  postTweetInReply [] _ func         = return ()
+  postTweetInReply (x:xs) nowid func = if T.null nowid then return () else do
+   nextid <- func x nowid botconf
+   postTweetInReply xs nextid func
 
-rmTweets :: T.Text -> PostQueue -> [T.Text] -> [String] -> IO()
-rmTweets postmsg postq twid botconf = 
+rmTweets :: T.Text -> PostQueue -> [T.Text] -> [String] -> (T.Text -> T.Text -> [String] -> IO(T.Text)) -> IO()
+rmTweets postmsg postq twid botconf func = 
  if Prelude.null twid then tweet postmsg ((gmid_str.V.head.mentions) postq) botconf >> return () 
- else rmTweet (Prelude.head twid) botconf >> rmTweets postmsg postq (Prelude.tail twid) botconf
+ else rmTweet (Prelude.head twid) botconf >> rmTweets postmsg postq (Prelude.tail twid) botconf func
 
 -- user command
-userCmd :: PostQueue -> [String] -> IO (V.Vector (T.Text, ZonedTime))
-userCmd msg botconf = (case T.unpack (filterCmd msg 2) of
+userCmd :: PostQueue -> [String] -> (T.Text -> T.Text -> [String] -> IO(T.Text)) -> IO (V.Vector (T.Text, ZonedTime))
+userCmd msg botconf func = (case T.unpack (filterCmd msg 2) of
  "add"  -> uaddCmd
  "rm"   -> urmCmd 
  "set"  -> usetCmd
  "help" -> uhelpCmd
- _      -> errorCmd) msg botconf
+ _      -> errorCmd) msg botconf func
 
-uaddCmd :: PostQueue -> [String] -> IO (V.Vector (T.Text, ZonedTime))
-uaddCmd msg botconf = getPermitUser ((gid_str.gmuser.V.head.mentions)msg) 2 >>= \x -> if not x then return V.empty else do
+uaddCmd :: PostQueue -> [String] -> (T.Text -> T.Text -> [String] -> IO(T.Text)) -> IO (V.Vector (T.Text, ZonedTime))
+uaddCmd msg botconf func = getPermitUser ((gid_str.gmuser.V.head.mentions)msg) 2 >>= \x -> if not x then return V.empty else do
  let user_id    = (gid_str.gmuser.V.head.mentions) msg
      postTarget = T.pack $ "done add user" ++ T.unpack (filterCmd msg 3)
      users      = (rmDup.Prelude.drop 3.T.words.gmtext.V.head.mentions) msg
  pusers <- Prelude.map splitChar.T.lines <$> TIO.readFile permitconf
  return V.empty
 
-urmCmd :: PostQueue -> [String] -> IO (V.Vector (T.Text, ZonedTime))
-urmCmd msg botconf = getPermitUser ((gid_str.gmuser.V.head.mentions)msg) 2 >>= \x -> if not x then return V.empty else do
+urmCmd :: PostQueue -> [String] -> (T.Text -> T.Text -> [String] -> IO(T.Text)) -> IO (V.Vector (T.Text, ZonedTime))
+urmCmd msg botconf func = getPermitUser ((gid_str.gmuser.V.head.mentions)msg) 2 >>= \x -> if not x then return V.empty else do
  let user_id    = (gid_str.gmuser.V.head.mentions) msg
      postmsg    = T.pack $ "done rm user" ++ T.unpack (filterCmd msg 3)
      users      = (rmDup.Prelude.drop 3.T.words.gmtext.V.head.mentions) msg
      postTarget = T.empty
  pusers <- Prelude.map splitChar.T.lines <$> TIO.readFile permitconf
  TIO.writeFile permitconf ((T.unlines.Prelude.map tupleToString) (rmUserCmd users pusers))
- postTweet postmsg msg postTarget botconf
+ postTweet postmsg msg postTarget botconf func
  return V.empty
   where
    rmUserCmd u p = if Prelude.null p then [] else 
@@ -269,8 +267,8 @@ urmCmd msg botconf = getPermitUser ((gid_str.gmuser.V.head.mentions)msg) 2 >>= \
    boolToStr True  = "True"
    boolToStr False = "False"
  
-usetCmd :: PostQueue -> [String] -> IO (V.Vector (T.Text, ZonedTime))
-usetCmd msg botconf = do
+usetCmd :: PostQueue -> [String] -> (T.Text -> T.Text -> [String] -> IO(T.Text)) -> IO (V.Vector (T.Text, ZonedTime))
+usetCmd msg botconf func = do
  let cmd      = filterCmd msg 3
      user     = filterCmd msg 4
      permit   = filterCmd msg 5
@@ -279,12 +277,12 @@ usetCmd msg botconf = do
   users <- Prelude.map (permitRewrite user (cmd,strToBool permit).splitChar).T.lines <$> TIO.readFile permitconf
   return V.empty
   
-uhelpCmd :: PostQueue -> [String] -> IO (V.Vector (T.Text, ZonedTime))
-uhelpCmd msg botconf = getPermitUser ((gid_str.gmuser.V.head.mentions)msg) 0 >>= \x -> if not x then return V.empty else do
+uhelpCmd :: PostQueue -> [String] -> (T.Text -> T.Text -> [String] -> IO(T.Text)) -> IO (V.Vector (T.Text, ZonedTime))
+uhelpCmd msg botconf func = getPermitUser ((gid_str.gmuser.V.head.mentions)msg) 0 >>= \x -> if not x then return V.empty else do
  let user_id    = (gid_str.gmuser.V.head.mentions) msg
      postTarget = T.empty
  postmsg <- TIO.readFile uHelpFile
- postTweet postmsg msg postTarget botconf
+ postTweet postmsg msg postTarget botconf func
  return V.empty
 
 -- web command comming soon?
@@ -292,11 +290,11 @@ uhelpCmd msg botconf = getPermitUser ((gid_str.gmuser.V.head.mentions)msg) 0 >>=
 --webCmd msg botconf postdata = calcWebPost postdata msg botconf typeTL
 
 -- command error post
-errorCmd :: PostQueue -> [String] -> IO (V.Vector (T.Text, ZonedTime)) -- post error
-errorCmd msg botconf = getPermitUser ((gid_str.gmuser.V.head.mentions)msg) 0 >>= \x -> if not x then return V.empty else do
+errorCmd :: PostQueue -> [String] -> (T.Text -> T.Text -> [String] -> IO(T.Text)) -> IO (V.Vector (T.Text, ZonedTime)) -- post error
+errorCmd msg botconf func = getPermitUser ((gid_str.gmuser.V.head.mentions)msg) 0 >>= \x -> if not x then return V.empty else do
  let postmsg    = T.pack "command error..."
      postTarget = T.empty
- postTweet postmsg msg postTarget botconf
+ postTweet postmsg msg postTarget botconf func
  return V.empty
 
 rmDup :: [T.Text] -> [T.Text]
@@ -336,11 +334,12 @@ splitChar = ((\[a,b,c,d] -> (a,strToBool b,strToBool c,strToBool d)).commaSep)
 
 strToBool str = if str == T.pack "True" then True else False
 
-showTL :: T.Text -> T.Text -> [String] -> IO() 
-showTL msg id botconf = tweet msg id botconf >> return ()
+showTL :: T.Text -> T.Text -> [String] -> IO(T.Text) 
+showTL msg id botconf =  (\t -> case t of Left  e -> error e
+                                          Right t -> post_tl_id_str t) <$>tweet msg id botconf 
 
-showTerm :: T.Text -> T.Text -> [String] -> IO()
-showTerm msg id botconf = print msg >> print id >> return()
+showTerm :: T.Text -> T.Text -> [String] -> IO(T.Text)
+showTerm msg id botconf = print msg >> print id >> return T.empty
 
 --postTweet :: PostData -> [GetMessageCreate] -> (T.Text -> PostData -> [GetMessageCreate] -> IO T.Text) -> IO PostData
 --postTweet postdata tw ptfunc= do 
