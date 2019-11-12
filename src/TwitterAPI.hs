@@ -2,10 +2,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE OverloadedLists #-}
 
-module TwitterAPI ( permitconf
-                  , noticetempconf
-                  , calcwebtempconf
-                  , GetDM (..)
+module TwitterAPI ( GetDM (..)
                   , GetMessageData (..)
                   , GetMessageCreate (..)
                   , GetEvents (..)
@@ -43,10 +40,6 @@ import Network.HTTP.Simple
 import Web.Authenticate.OAuth
 import Data.ByteString.Lazy.Internal
 import Control.Monad.IO.Class
-
-permitconf = "/usr/local/calc-tweet/permissionuser.conf"
-noticetempconf = "/usr/local/calc-tweet/temp/notice.conf"
-calcwebtempconf = "/usr/local/calc-tweet/temp/web.conf"
 
 -- get DM parser
 data GetDM = GetDM { gettext :: Text
