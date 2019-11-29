@@ -1,0 +1,75 @@
+# TwitterAPI.hs
+
+TwitterのAPIを叩く関数群
+
+# 利用するモジュール
+
+- System.IO
+- Control.Concurrent
+- Data.Text
+- Data.Text.IO
+- Data.Text.Encoding
+- Data.Aeson
+- Data.Aeson.TH
+- Data.ByteString
+- Data.ByteString.Char8
+- Network.HTTP.Conduit
+- Network.HTTP.Simple
+- Web.Authenticate.OAuth
+- Data,ByteString.Lazy.Internal
+- Control.Monad.IO.Class
+
+# データ型
+
+## ある相手からDirectMessageをGetした時の値の束縛
+
+### GetMessageData
+
+^ フィールド名 ^ 型^
+| gmd_text    | Text |
+
+### GetMessageCreate
+
+^ フィールド名 ^ 型 ^
+| gmc_message_data | GetDM |
+| gmc_sender_id | Text|
+
+### GetEvents
+
+^ フィールド名 ^ 型 ^
+| gev_message_create | GetMessageData |
+| gev_created_timestamp | Text |
+
+### GetDM
+
+^ フィールド名 ^ 型 ^
+| gdn_events | [GetEvents] |
+
+### PostTarget
+
+^ フィールド名 ^ 型 ^
+| pst_recipient_id | Text |
+
+### PostMessageData
+
+^ フィールド名 ^ 型 ^
+| pmd_text | Text
+
+### PostMessageCreate
+
+^ フィールド名 ^ 型 ^
+| pmc_message_data | PostMessageData |
+| pmc_target | PostTarget |
+
+### PostEvent 
+
+^ フィールド名 ^ 型 ^
+| pev_type | Text |
+| pev_message_create | PostMessageCreate |
+
+### PostDM
+
+^ フィールド名 ^ 型 ^
+| pdm_event | PostEvent |
+
+

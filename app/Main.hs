@@ -6,6 +6,8 @@ module Main(main) where
 import Lib
 import TwitterAPI
 import SlackAPI
+import CalcParser.Parser
+import CalcParser.Exec
 
 import Control.Concurrent
 import qualified Data.Text.IO as TIO
@@ -16,7 +18,6 @@ import qualified Data.Vector as V
 import System.Directory
 import System.IO
 import Control.Exception
-
 
 main = do
  -- calcweb-post
@@ -30,7 +31,7 @@ main = do
  -- main
  tlmention <- (\t -> case t of Left  e -> error e
                                Right l -> (gmid_str.Prelude.head) l) <$> getMention T.empty botconf
- monitoring msgqueue tlmention botconf showTL
+ monitoring msgqueue tlmention botconf 
 
  -- get mentions timeline
  -- main

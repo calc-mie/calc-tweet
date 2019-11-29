@@ -30,6 +30,11 @@ library:
   - text
   - aeson
   - bytestring
+  - slack-api
+  - mtl
+  - directory
+  - time
+  - vector
 
 executables:
   calc-tweet-exe:
@@ -42,6 +47,9 @@ executables:
     dependencies:
     - calc-tweet
     - text
+    - directory
+    - time
+    - vector
 
 tests:
   calc-tweet-test:
@@ -53,3 +61,7 @@ tests:
     - -with-rtsopts=-N
     dependencies:
     - calc-tweet
+    - text
+    - directory
+    - time
+    - vector

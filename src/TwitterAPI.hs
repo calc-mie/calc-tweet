@@ -6,7 +6,7 @@ module TwitterAPI ( GetDM (..)
                   , GetMessageData (..)
                   , GetMessageCreate (..)
                   , GetEvents (..)
-                  , PostRecipient (..)
+                  , PostTarget (..)
                   , PostDM (..)
                   , PostMessageData (..)
                   , PostMessageCreate (..)
@@ -42,46 +42,46 @@ import Data.ByteString.Lazy.Internal
 import Control.Monad.IO.Class
 
 -- get DM parser
-data GetDM = GetDM { gettext :: Text
+data GetMessageData = GetMessageData { gmd_text :: Text
                    } deriving(Show)
-$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 3 } ''GetDM)
+$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 4 } ''GetMessageData)
 
-data GetMessageData = GetMessageData { getmessage_data :: GetDM
-                                     , getsender_id :: Text
-                                      } deriving(Show)
-$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 3 } ''GetMessageData)
+data GetMessageCreate = GetMessageCreate { gmc_message_data :: GetMessageData
+                                         , gmc_sender_id :: Text
+                                         } deriving(Show)
+$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 4 } ''GetMessageCreate)
 
-data GetMessageCreate = GetMessageCreate { getmessage_create :: GetMessageData
-                                         , getcreated_timestamp :: Text
-                                          } deriving (Show)
-$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 3 } ''GetMessageCreate)
-
-data GetEvents = GetEvents { getevents :: [GetMessageCreate]
+data GetEvents = GetEvents { gev_message_create :: GetMessageCreate
+                           , gev_created_timestamp :: Text
                            } deriving (Show)
-$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 3 } ''GetEvents)
+$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 4 } ''GetEvents)
+
+data GetDM = GetDM { gdm_events :: [GetEvents]
+                   } deriving (Show)
+$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 4 } ''GetDM)
 
 -- post DM parser
-data PostRecipient = PostRecipient { postrecipient_id :: Text
-                                   } deriving (Show)
-$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 4 } ''PostRecipient)
+data PostTarget = PostTarget { ptg_recipient_id :: Text
+                             } deriving (Show)
+$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 4 } ''PostTarget)
 
-data PostDM = PostDM { posttext :: Text
-                     } deriving (Show)
-$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 4 } ''PostDM)
-
-data PostMessageData = PostMessageData { postmessage_data :: PostDM 
-                                       , posttarget :: PostRecipient
-                                        } deriving (Show)
+data PostMessageData = PostMessageData { pmd_text :: Text
+                                       } deriving (Show)
 $(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 4 } ''PostMessageData)
 
-data PostMessageCreate = PostMessageCreate { posttype :: Text
-                                           , postmessage_create :: PostMessageData
+data PostMessageCreate = PostMessageCreate { pmc_message_data :: PostMessageData
+                                           , pmc_target :: PostTarget
                                            } deriving (Show)
 $(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 4 } ''PostMessageCreate)
 
-data PostEvent = PostEvent { postevent :: PostMessageCreate
-                              } deriving (Show)
+data PostEvent = PostEvent { pev_type :: Text
+                           , pev_message_create :: PostMessageCreate
+                           } deriving (Show)
 $(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 4 } ''PostEvent)
+
+data PostDM = PostDM { pdm_event :: PostEvent
+                     } deriving (Show)
+$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 4 } ''PostDM)
 
 --post TL parser
 data Tweet = Tweet { text :: Text
@@ -169,14 +169,14 @@ rmTweet twid botconf = do
  return ()
 
 postDM :: Text -> Text -> [String] -> IO ()
-postDM tw un botconf = do
+postDM tw uid botconf = do
  responce <- do
   req <-(\n->n {method = "POST"}) <$>parseRequest "https://api.twitter.com/1.1/direct_messages/events/new.json"  
-  let json = PostEvent { postevent = PostMessageCreate 
-                                    { posttype = "message_create" 
-                                    , postmessage_create = PostMessageData 
-                                                            { postmessage_data = PostDM { posttext = tw}
-                                                            , posttarget = PostRecipient { postrecipient_id = un}}}}
+  let json = PostDM { pdm_event = PostEvent 
+                                  { pev_type = "message_create" 
+                                  , pev_message_create = PostMessageCreate
+                                                         { pmc_message_data = PostMessageData { pmd_text = tw}
+                                                         , pmc_target = PostTarget { ptg_recipient_id = uid}}}}
   let postreq = setRequestBodyJSON json req
   httpManager postreq botconf
  return ()
