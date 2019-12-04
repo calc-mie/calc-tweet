@@ -1,0 +1,30 @@
+# Lib.hs
+
+ライブラリ
+
+# 利用するモジュール
+
+- TwitterAPI
+- SlackAPI
+-
+- Control.Exception
+- Control.Concurrent
+- System.Directory
+- System.IO
+- Control.Exception
+- Data.Time
+- Data.List
+- Data.Text.IO
+- Data.Text
+- Data.Vector
+
+# データ型
+
+## PostQueue
+
+^ フィールド名 ^ 型 ^ 意味 ^
+| mentions | V.Vector GetMention | |
+| schedule | V.Vector (T.Text, ZonedTime) | |
+
+
+

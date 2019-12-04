@@ -2,6 +2,16 @@
 
 TwitterのAPIを叩く関数群
 
+# 利用する言語拡張
+
+LANGUAGE OverloadedStrings
+
+LANGUAGE TemplateHaskell
+
+LANGUAGE OverloadedLists
+
+※設計者はあまり良くわかっていないから要調査
+
 # 利用するモジュール
 
 - System.IO
@@ -21,55 +31,184 @@ TwitterのAPIを叩く関数群
 
 # データ型
 
-## ある相手からDirectMessageをGetした時の値の束縛
+## GetDM
+ある相手からのDirectMessageを得るためのデータ型
 
 ### GetMessageData
 
-^ フィールド名 ^ 型^
-| gmd_text    | Text |
+^ フィールド名 ^ 型 ^ 意味 ^
+| gmd\_text    | Text | DirectMessage本文 |
 
 ### GetMessageCreate
 
-^ フィールド名 ^ 型 ^
-| gmc_message_data | GetDM |
-| gmc_sender_id | Text|
+^ フィールド名 ^ 型 ^ 意味 ^
+| gmc\_message\_data | GetDM | 上記 |
+| gmc\_sender\_id | Text| 送信主 |
 
 ### GetEvents
 
-^ フィールド名 ^ 型 ^
-| gev_message_create | GetMessageData |
-| gev_created_timestamp | Text |
+^ フィールド名 ^ 型 ^ 意味 ^
+| gev\_message\_create | GetMessageCreate | 上記 |
+| gev\_created\_timestamp | Text | 作成された時間 |
 
 ### GetDM
 
-^ フィールド名 ^ 型 ^
-| gdn_events | [GetEvents] |
+^ フィールド名 ^ 型 ^ 意味 ^
+| gdn\_events | [GetEvents] | 上記 | 
+
+## PostDM
+
+あるユーザにDirectMessageを送信する時に利用するデータ型
 
 ### PostTarget
 
-^ フィールド名 ^ 型 ^
-| pst_recipient_id | Text |
+^ フィールド名 ^ 型 ^ 意味 ^
+| pst\_recipient\_id | Text | 送信する相手 |
 
 ### PostMessageData
 
-^ フィールド名 ^ 型 ^
-| pmd_text | Text
+^ フィールド名 ^ 型 ^ 意味 ^
+| pmd\_text | Text | メッセージ本文 |
 
 ### PostMessageCreate
 
-^ フィールド名 ^ 型 ^
-| pmc_message_data | PostMessageData |
-| pmc_target | PostTarget |
+^ フィールド名 ^ 型 ^ 意味 ^
+| pmc\_message\_data | PostMessageData | 上記 |
+| pmc\_target | PostTarget | 上記 |
 
 ### PostEvent 
 
-^ フィールド名 ^ 型 ^
-| pev_type | Text |
-| pev_message_create | PostMessageCreate |
+^ フィールド名 ^ 型 ^ 意味 ^
+| pev\_type | Text | DirectMessageかどうか、仕様でここは"message\_create"を束縛する |
+| pev\_message\_create | PostMessageCreate | 上記 |
 
 ### PostDM
 
+^ フィールド名 ^ 型 ^ 意味 ^
+| pdm\_event | PostEvent | 上記 |
+
+## GetTL
+
+タイムラインを得るためのデータ型
+
+^ フィールド名 ^ 型 ^ 意味 ^
+| gtl\_text | Text | tweet本文 |
+| gtl\_id\_str | Text | tweetそのもののid |
+| gtl\_in\_reply\_to\_status\_id\_str | Text | replyならそのid,なければNULL(?) |
+
+## PostTL
+
+タイムラインにtweetするためのデータ型
+
+^ フィールド名 ^ 型 ^ 意味 ^
+| ptl\_id\_str | Text | replyする場合はそのid,なければ空列を束縛
+
+## GetMention
+
+あるユーザがメンションを送ったtweetを得るためのデータ型
+
+### User
+
+^ フィールド名 ^ 型 ^ 意味 ^
+| gur\_id\_str | Text | ユーザのid |
+
+### GetMention
+
 ^ フィールド名 ^ 型 ^
-| pdm_event | PostEvent |
+| gmt\_id\_str | Text | tweetのid |
+| gmt\_text | Text | tweetの本文 |
+| gmt\_user | User| 上記 |
 
 
+# 関数
+
+## getAPIKeys
+
+- 型...IO[String]
+- 動作...コンソールからAPIKeyを入力させる
+- 利用する関数...無し
+- 特記事項...コンソールからの入力であるから、入力を隠す必要がある
+
+## botuser
+
+- 型...[String] -> IO(OAuth, Credential)
+- 動作...APIKeysを受け取って認証できる形式にする
+- 利用する関数...無し
+- 特記事項...無し
+
+## httpManager
+
+- 型...Request -> [String] -> IO(Response Data.ByteString.Lazy.Internal.ByteString) 
+- 動作...リクエストとAPIKeyを受け取ってサーバにデータを送信して結果を受け取る
+- 利用する関数...botuser
+- 特記事項...無し
+
+## getDM
+
+- 型...[String] -> IO (Either String GetEvents)
+- 動作...APIKeysを受け取ってDirectMessageを取得する
+- 利用する関数...httpManager
+- 特記事項...APIの仕様上ある人から送られたDirectMessageのみを取得するものではなく、DirectMessage全てを取得するものである。
+
+## getMyTweet
+
+- 型...[String] -> IO(Either String [GetTL])
+- 動作...APIKeysを受け取って自身のtweetを取得する
+- 利用する関数...httpManager
+- 特記事項...取得数は変更できるが、最大値でいい気がする 
+
+## getTL
+
+- 型...[String] -> IO (Either String [GetTL])
+- 動作...APIKeysを受け取ってTimeLineを取得する
+- 利用する関数...httpManager
+- 特記事項...書きたいことは多いがAPIを見たほうが良い
+
+## getUserTL
+
+- 型...Text -> [String] -> IO(Either String [GetMention])
+- 動作...取得したいユーザ、取得したいtweetの1つ前のtweetのid,APIKeysを受け取ってあるユーザのあるtweet以降のtweetを取得する
+- 利用する関数...httpManager
+- 特記事項...無し
+
+## getMention
+
+- 型... Text -> [String] -> IO(Either String [GetMention])
+- 動作...取得したいtweetの1つ前のtweetのidとAPIKeysを受け取ってあるtweet以降のメンションを取得する
+- 利用する関数...httpManager
+- 特記事項...Ver.2のcalc-tweetでこれをコマンドの受け取りの関数とする
+
+## getUser
+
+- 型... Text -> [String] -> IO (Either String [User])
+- 動作...取得したいユーザのscreen_nameとAPIKeysを受け取ってユーザのidを取得する
+- 利用する関数...httpManager
+- 特記事項...screen_nameは例えばcalc-mie,idは数字列を指す
+
+## postRT
+
+- 型...Text -> [String] -> IO ()
+- 動作...tweetのidとAPIKeysを取得してretweetをする
+- 利用する関数...httpManager
+- 特記事項...retweetをするのも取り消すのも同様のURLのため、ラッパーがあったほうがいいかも
+
+## tweet
+
+- 型...Text -> Text -> [String] -> IO (Either String PostTL)
+- 動作...tweet本文、リプライ先のtweetのid、APIKeysを受け取ってtweetをする
+- 利用する関数...httpManager
+- 特記事項...リプライ先のidが""ならばリプライをしない。
+
+## rmTweet
+
+- 型...Text -> [String] -> IO()
+- 動作...tweetのidとAPIKeysを受け取ってそのツイートを削除する
+- 利用する関数...httpManager
+- 特記事項...無し
+
+## postDM
+
+- 型...Text -> Text -> [String] -> IO ()
+- 動作...本文,受信側のid,APIKeysを受け取ってユーザにDirectMessageを送信する
+- 利用する関数...httpManager
+- 特記事項...無し

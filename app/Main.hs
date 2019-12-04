@@ -23,9 +23,7 @@ main = do
  -- calcweb-post
  oldcalcweb <- getDirectoryContents srvcalcdir
  -- api key
- hSetEcho stdin False
- botconf <- getAPIkeys ["API key :", "API secret key :", "Access token :", "Access token secret :"]
- hSetEcho stdin True
+ botconf <- getAPIkeys
  -- message queue
  msgqueue <- newMVar PostQueue{mentions = V.empty, schedule = V.empty } :: IO (MVar PostQueue)
  -- main

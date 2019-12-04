@@ -11,11 +11,11 @@ module TwitterAPI ( GetDM (..)
                   , PostMessageData (..)
                   , PostMessageCreate (..)
                   , PostEvent (..)
-                  , Tweet (..)
+                  , GetTL (..)
                   , PostTL (..)
                   , User (..)
                   , GetMention (..)
-                  , getGetDM
+                  , getDM
                   , getTL
                   , getUser
                   , getUserTL
@@ -28,6 +28,7 @@ module TwitterAPI ( GetDM (..)
 
 import System.IO
 import Control.Concurrent
+import Control.Exception
 import Data.Text
 import Data.Text.IO 
 import Data.Text.Encoding
@@ -83,47 +84,48 @@ data PostDM = PostDM { pdm_event :: PostEvent
                      } deriving (Show)
 $(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 4 } ''PostDM)
 
---post TL parser
-data Tweet = Tweet { text :: Text
-                   , id_str :: Text
-                   , in_reply_to_status_id_str :: Text} deriving (Show)
-$(deriveJSON defaultOptions  ''Tweet)
+--get TL Parser
+data GetTL = GetTL { gtl_text :: Text
+                   , gtl_id_str :: Text
+                   , gtl_in_reply_to_status_id_str :: Text} deriving (Show)
+$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 4 } ''GetTL)
 
-data PostTL = PostTL { post_tl_id_str :: Text} deriving (Show)
-$(deriveJSON defaultOptions {fieldLabelModifier = Prelude.drop 8 } ''PostTL)
+--post TL parser
+data PostTL = PostTL { ptl_id_str :: Text} deriving (Show)
+$(deriveJSON defaultOptions {fieldLabelModifier = Prelude.drop 4 } ''PostTL)
 
 --get User parser
-data User = User { gid_str :: Text } deriving (Show)
-$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 1 }  ''User)
+data User = User { gur_id_str :: Text } deriving (Show)
+$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 4 }  ''User)
 
 --get Mention parser
-data GetMention = GetMention { gmid_str :: Text
-                             , gmtext   :: Text
-                             , gmuser   :: User} deriving (Show)
-$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 2 }  ''GetMention)
+data GetMention = GetMention { gmt_id_str :: Text
+                             , gmt_text   :: Text
+                             , gmt_user   :: User} deriving (Show)
+$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 4 }  ''GetMention)
 
-getGetDM :: [String] -> IO (Either String GetEvents)
-getGetDM botconf = do
+getDM :: [String] -> IO (Either String GetEvents)
+getDM botconf = do
  response <- do
   req <- parseRequest $ "https://api.twitter.com/1.1/direct_messages/events/list.json"
   httpManager req botconf
  return $ eitherDecode $ responseBody response
 
-getMyTweet :: [String] -> IO(Either String [Tweet])
+getMyTweet :: [String] -> IO(Either String [GetTL])
 getMyTweet botconf = do
  response <- do
   req <- parseRequest $ "https://api.twitter.com/1.1/statuses/user_timeline.json"
   httpManager req botconf
  return $ eitherDecode $ responseBody response
 
-getTL :: [String] -> IO (Either String [Tweet])
+getTL :: [String] -> IO (Either String [GetTL])
 getTL botconf = do
  response <- do
   req <- parseRequest $ "https://api.twitter.com/1.1/statuses/home_timeline.json?count=1"
   httpManager req botconf
  return $ eitherDecode $ responseBody response
 
-getUserTL :: Text -> Text -> [String] -> IO (Either String [Tweet])
+getUserTL :: Text -> Text -> [String] -> IO (Either String [GetTL])
 getUserTL user_id since_id botconf = do
  response <- do
   req <- parseRequest $ "https://api.twitter.com/1.1/statuses/home_timeline.json?count=200&user_id=" ++ unpack user_id ++
@@ -197,12 +199,18 @@ botuser botsparameter = do
       myCredential = newCredential (C.pack(botsparameter !! 2)) (C.pack(botsparameter !! 3))
  return (myOAuth, myCredential)
 
-getAPIkeys :: [String] -> IO [String]
-getAPIkeys [] = return []
-getAPIkeys (m:messages) = do
- Prelude.putStr m 
- hFlush stdout
- api <- Prelude.getLine 
- Prelude.putChar '\n'
- getAPIkeys messages >>= (\res -> return (api:res))
+getAPIkeys :: IO [String]
+getAPIkeys = do
+ hSetEcho stdin False
+ subGetAPI ["API key :", "API secret key :", "Access token :", "Access token secret :"]
+ hSetEcho stdin True
+ where
+  subGetAPI :: [String] -> IO[ String]
+  subGetAPI [] = []
+  subGetAPI (m:messages) = do
+   Prelude.putStr m 
+   hFlush stdout
+   api <- Prelude.getLine 
+   Prelude.putChar '\n'
+   subGetAPI messages >>= (\res -> return (api:res))
 
