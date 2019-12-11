@@ -28,30 +28,33 @@ data Week = Monday
           | Sunday
           deriving (Show, Enum, Eq)
 
-data PostType = TL
-              | DM
-              deriving (Eq)
+data Postfunc = Postfunc { tl :: T.Text -> T.Text -> [String] -> IO(T.Text)
+                         , dm :: T.Text -> T.Text -> [String] -> IO(T.Text)}
 
 --calcwebdir = "/home/share/posts/posts-available/"
 --srvcalcdir = "/srv/calc-web/posts"
 --reminddir = "/usr/local/calc-tweet/reminder/"
 twHelpFile = "/usr/local/calc-tweet/helps/tweet.txt"
 uHelpFile = "/usr/local/calc-tweet/helps/tweet.txt"
-usersconf = "/usr/local/calc-tweet/users.conf"
 groupsconf = "/usr/local/calc-tweet/groups.conf"
 
 emptyint = 1*1000*1000  :: Int {- 1 second -} 
 mentiont = 12*1000*1000 :: Int {-12 second -}
 
-searchReplyTree :: T.Text -> V.Vector Tweet ->  T.Text -- create all message
+searchReplyTree :: T.Text -> V.Vector GetTL ->  T.Text -- create all message
 searchReplyTree id tl = if T.null id then T.empty else 
  ((\t -> case t of Nothing -> T.empty 
-                   Just a  -> T.append (text a) (searchReplyTree (id_str a) tl)).V.find (\x -> ((==id).in_reply_to_status_id_str) x)) tl
+                   Just a  -> T.append (gtl_id_str a) (searchReplyTree (gtl_id_str a) tl)).V.find ((==id).rpStatus)) tl
 
-searchReplyId :: T.Text -> V.Vector Tweet -> [T.Text]
+searchReplyId :: T.Text -> V.Vector GetTL -> [T.Text]
 searchReplyId id tl = if T.null id then [] else
  ((\t -> case t of Nothing -> []
-                   Just a  -> (id_str a):(searchReplyId (id_str a) tl)).V.find (\x -> ((==id).in_reply_to_status_id_str) x)) tl
+                   Just a  -> (gtl_id_str a):(searchReplyId (gtl_id_str a) tl)).V.find ((==id).rpStatus)) tl
+
+rpStatus :: GetTL -> T.Text
+rpStatus gtl = case gtl_in_reply_to_status_id_str gtl of
+ Nothing -> T.empty
+ Just x  -> x
 
 getTweetId :: PostQueue -> T.Text
 getTweetId msg = T.pack $ (((show :: Integer -> String).(+(-1)).(read :: String -> Integer).T.unpack.scrapingId) (filterCmd msg 3))
@@ -63,41 +66,96 @@ scrapingId text = if T.null text then T.empty else
 rmDup :: [T.Text] -> [T.Text]
 rmDup = foldl (\seen x -> if x `elem` seen then seen else x:seen) []
 
-filterCmd vmsgq n = ((!! n).Prelude.head.Prelude.map T.words.T.lines.gmtext.V.head.mentions) vmsgq 
+filterCmd vmsgq n = ((!! n).Prelude.head.Prelude.map T.words.T.lines.gmt_text.V.head.mentions) vmsgq 
 
-getPermitUser :: T.Text -> Int -> IO Bool
-getPermitUser uid n = if n < 0 || 4 < n then error "getPermitUser :: error" else do
- users <- Prelude.map splitChar.T.lines <$> TIO.readFile usersconf
- return $ ((\p -> case p of Nothing        -> False
-                            Just (a,b,c,d) -> case n of
-                                                   0 -> True -- change "me"
-                                                   1 -> b -- tweet
-                                                   2 -> c -- sudo
-                                                   3 -> d -- broadcast
-                                                   _ -> False).L.find (\(a,b,c,d) -> uid == a)) users
+-- getPermitUser :: T.Text -> Int -> IO Bool
+-- getPermitUser uid n = if n < 0 || 4 < n then error "getPermitUser :: error" else do
+--  users <- Prelude.map splitChar.T.lines <$> TIO.readFile usersconf
+--  return $ ((\p -> case p of Nothing        -> False
+--                             Just (a,b,c,d) -> case n of
+--                                                    0 -> True -- change "me"
+--                                                    1 -> b -- tweet
+--                                                    2 -> c -- sudo
+--                                                    3 -> d -- broadcast
+--                                                    _ -> False).L.find (\(a,b,c,d) -> uid == a)) users
 
-broadUsers :: IO T.Text
-broadUsers = do
- users <- Prelude.map splitChar.T.lines <$> TIO.readFile usersconf
- return $ T.append (T.pack "@") ((T.intercalate (T.pack "\n@").Prelude.map (\(a,b,c,d) -> a).Prelude.filter (\(a,b,c,d) -> d)) users)
-  
-
-permitRewrite :: T.Text -> (T.Text,Bool) -> (T.Text, Bool, Bool, Bool) -> (T.Text, Bool, Bool, Bool)
-permitRewrite id (cmd,permit) (a,b,c,d) = if a /= id then (a,b,c,d) else case T.unpack cmd of
- "post"      -> (a, permit, c, d)
- "sudo"      -> (a, b, permit, d)
- "broadcast" -> (a, b, c, permit)
- _           -> (a,b,c,d)
+-- broadUsers :: IO T.Text
+-- broadUsers = do
+--  users <- Prelude.map splitChar.T.lines <$> TIO.readFile usersconf
+--  return $ T.append (T.pack "@") ((T.intercalate (T.pack "\n@").Prelude.map (\(a,b,c,d) -> a).Prelude.filter (\(a,b,c,d) -> d)) users)
+--   
+-- 
+-- permitRewrite :: T.Text -> (T.Text,Bool) -> (T.Text, Bool, Bool, Bool) -> (T.Text, Bool, Bool, Bool)
+-- permitRewrite id (cmd,permit) (a,b,c,d) = if a /= id then (a,b,c,d) else case T.unpack cmd of
+--  "post"      -> (a, permit, c, d)
+--  "sudo"      -> (a, b, permit, d)
+--  "broadcast" -> (a, b, c, permit)
+--  _           -> (a,b,c,d)
 
 splitChar :: T.Text -> (T.Text, Bool, Bool, Bool)
 splitChar = ((\[a,b,c,d] -> (a,strToBool b,strToBool c,strToBool d)).commaSep) 
- where
-  commaSep :: T.Text -> [T.Text]
-  commaSep text = if T.null text then [] else T.takeWhile (/=',') text:commaSep ((T.tail.(T.dropWhile (/=','))) text)
+
+commaSep :: T.Text -> [T.Text]
+commaSep text = if T.null text then [] else T.takeWhile (/=',') text:commaSep ((T.tail.(T.dropWhile (/=','))) text)
+
+commaIns :: [T.Text] -> T.Text
+commaIns = T.intercalate (T.singleton ',')
 
 strToBool str = if str == T.pack "True" then True else False
 
+userInGroup :: T.Text -> IO (V.Vector T.Text)
+userInGroup group = do
+ all <- V.fromList.Prelude.map (V.fromList.commaSep).T.lines <$> TIO.readFile groupsconf
+ case V.find ((==group).V.head) all of
+  Nothing -> return V.empty
+  Just gr -> return $ V.tail gr
 
+allUsers ::  IO (V.Vector T.Text)
+allUsers = TIO.readFile groupsconf >>= return.V.fromList.L.nub.Prelude.concat.Prelude.map (Prelude.tail.commaSep).T.lines
+
+existInGroup :: T.Text -> T.Text -> IO Bool
+existInGroup user group = do
+ us <- userInGroup group
+ case V.find (== user) us of
+  Nothing -> return False
+  Just u  -> return True
+
+existUser :: T.Text -> IO Bool
+existUser user = do
+ all <- allUsers
+ case V.find (== user) all of
+  Nothing -> return False
+  Just u  -> return True
+
+addUserInGroup :: T.Text -> T.Text -> IO ()
+addUserInGroup user group = do
+ raw <- Prelude.map commaSep.T.lines <$> TIO.readFile groupsconf
+ case L.find ((==group).Prelude.head) raw of
+  Nothing -> return ()
+  Just a  -> TIO.writeFile groupsconf $ (T.unlines.Prelude.map commaIns) (appendUser user group raw)
+   where
+    appendUser :: T.Text -> T.Text -> [[T.Text]] -> [[T.Text]]
+    appendUser us gr []     = []
+    appendUser us gr (r:rs) = case (((==gr).Prelude.head) r,L.find (==us) (Prelude.tail r)) of
+     (True, Nothing) -> ((Prelude.head r):user:(Prelude.tail r)):appendUser us gr rs
+     otherwise         -> r:appendUser us gr rs
+ 
+
+rmUserInGroup :: T.Text -> T.Text -> IO ()
+rmUserInGroup user group = do
+ raw <- Prelude.map commaSep.T.lines <$> TIO.readFile groupsconf
+ case L.find ((==group).Prelude.head) raw of
+  Nothing -> return ()
+  Just a  -> TIO.writeFile groupsconf $(T.unlines.Prelude.map commaIns) (removeUser user group raw)
+   where
+    removeUser :: T.Text -> T.Text -> [[T.Text]] -> [[T.Text]]
+    removeUser us gr [] = []
+    removeUser us gr (r:rs) = case (((==gr).Prelude.head) r,L.find (==us) (Prelude.tail r)) of
+     (True, Nothing) -> ((Prelude.head r):filter (/=us) (Prelude.tail r)):removeUser us gr rs
+     otherwise         -> r:removeUser us gr rs
+
+queueToUser :: PostQueue -> T.Text
+queueToUser = gur_screen_name.gmt_user.V.head.mentions
 
 -- before refuctoring, all comment out below
 -- postTweet :: T.Text -> PostQueue -> T.Text -> [String] -> IO() 
@@ -216,12 +274,12 @@ strToBool str = if str == T.pack "True" then True else False
 -- searchReplyTree :: T.Text -> V.Vector Tweet ->  T.Text -- create all message
 -- searchReplyTree id tl = if T.null id then T.empty else 
 --  ((\t -> case t of Nothing -> T.empty 
---                    Just a  -> T.append (text a) (searchReplyTree (id_str a) tl)).V.find (\x -> ((==id).in_reply_to_status_id_str) x)) tl
+--                    Just a  -> T.append (text a) (searchReplyTree (id_str a) tl)).V.find (\x -> ((==id).gtl_in_reply_to_status_id_str) x)) tl
 -- 
 -- searchReplyId :: T.Text -> V.Vector Tweet -> [T.Text]
 -- searchReplyId id tl = if T.null id then [] else
 --  ((\t -> case t of Nothing -> []
---                    Just a  -> (id_str a):(searchReplyId (id_str a) tl)).V.find (\x -> ((==id).in_reply_to_status_id_str) x)) tl
+--                    Just a  -> (id_str a):(searchReplyId (id_str a) tl)).V.find (\x -> ((==id).gtl_in_reply_to_status_id_str) x)) tl
 -- 
 -- getTweetId :: PostQueue -> T.Text
 -- getTweetId msg = T.pack $ (((show :: Integer -> String).(+(-1)).(read :: String -> Integer).T.unpack.scrapingId) (filterCmd msg 3))

@@ -29,7 +29,16 @@ main = do
  -- main
  tlmention <- (\t -> case t of Left  e -> error e
                                Right l -> (gmid_str.Prelude.head) l) <$> getMention T.empty botconf
- monitoring msgqueue tlmention botconf 
+
+ monitoring msgqueue tlmention botconf (Postfunc { tl = showTL, dm = showDM })
+
+showTL :: T.Text -> T.Text -> [String] -> IO(T.Text)
+showTL msg id conf = tweet msg id conf >>= (\tl -> return (case tl of Left  e -> error e
+                                                                      Right t -> post_tl_id_str t))
+
+showDM :: T.Text -> T.Text -> [String] -> IO(T.Text)
+showDM msg id conf = postDM msg id conf >> return T.empty
+
 
  -- get mentions timeline
  -- main
