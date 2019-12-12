@@ -6,61 +6,72 @@ module Main(main) where
 import Lib
 import TwitterAPI
 import SlackAPI
-import Parser
-import Exec
 
 import Control.Concurrent
 import qualified Data.Text.IO as TIO
-import qualified Data.List as L
+import Data.List
 import qualified Data.Text as T
 import Data.Time
 import qualified Data.Vector as V
 import System.Directory
-import System.IO
-import Control.Exception
 
 main = do
  -- calcweb-post
- --oldcalcweb <- getDirectoryContents srvcalcdir
- -- api key
- botconf <- getAPIkeys
- -- message queue
- msgqueue <- newMVar PostQueue{mentions = V.empty, schedule = V.empty } :: IO (MVar PostQueue)
+ oldcalcweb <- getDirectoryContents srvcalcdir
  -- main
- tlmention <- (\t -> case t of Left  e -> error e
-                               Right l -> (gmt_id_str.Prelude.head) l) <$> getMention T.empty botconf
+ direct_message <- getGetDM
+ case direct_message of
+  Right dm -> monitoring (setPostData ((getcreated_timestamp . head . getevents) dm, oldcalcweb, [], False)) >> putStrLn "fin"
 
- monitoring msgqueue tlmention botconf (Postfunc { tl = showTL, dm = showDM })
+monitoring :: PostData -> IO PostData
+monitoring pd = do
+ threadDelay(7*10*1000*1000)
+ postdata <- (rtCheck pd >>= remindCheck typeTL)-- monitoring retweeting
+ -- monitoring direct message
+ directmessage <- getGetDM
+ case directmessage of 
+  Left err -> monitoring postdata
+  Right dm -> if befts pd == (getcreated_timestamp . head . getevents) dm 
+               then monitoring postdata
+              else do
+               pusr <- (TIO.readFile permitconf >>= getUser.T.intercalate (T.pack ",").T.lines)
+               case pusr of
+                Left err             -> monitoring postdata
+                Right permissionuser -> ( do
+                 let puser = permissionIndexes ((map sender_idpart) ((getevents) dm)) permissionuser 0
+                 cmdCheck (postdata{befts = (getcreated_timestamp . head . getevents) dm }) ((V.fromList.getevents) dm) (
+                  case elemIndex (befts pd) (map getcreated_timestamp (getevents dm)) of 
+                   Nothing -> (length.map getcreated_timestamp) (getevents dm)
+                   Just n  -> (n-1) ) >>= monitoring )
 
-showTL :: T.Text -> T.Text -> [String] -> IO(T.Text)
-showTL msg id conf = tweet msg id conf >>= (\tl -> return (case tl of Left  e -> error e
-                                                                      Right t -> ptl_id_str t))
+cmdCheck :: PostData -> V.Vector GetMessageCreate -> Int -> IO PostData 
+cmdCheck postdata tw n
+ | n < 0                 = return postdata
+ | otherwise             = 
+  case (T.unpack.head.head.map T.words.T.lines.gettext.getmessage_data.getmessage_create) (tw V.! n) of
+   "$post"          -> postTweet postdata ((filter ((==sender_idpart (tw V.! n)).sender_idpart).V.toList.V.drop (n+1)) tw) typeTL >>= (\ret -> cmdCheck ret tw (n-1))
+   "$print"         -> postTweet postdata ((filter ((==sender_idpart (tw V.! n)).sender_idpart).V.toList.V.drop (n+1)) tw) typeDM >>= (\ret -> cmdCheck ret tw (n-1))
+   "$post-calc-web" -> calcWebPost postdata ((V.toList.V.drop (n+1)) tw) typeTL >>= (\ret -> cmdCheck ret tw (n-1))
+   "$useradd"       -> userAdd postdata ((V.toList.V.drop (n+1)) tw) >>= (\ret -> cmdCheck ret tw (n-1))
+   _                -> cmdCheck postdata tw (n-1)
 
-showDM :: T.Text -> T.Text -> [String] -> IO(T.Text)
-showDM msg id conf = postDM msg id conf >> return T.empty
+sender_idpart = getsender_id.getmessage_create
 
+typeDM :: T.Text -> PostData -> [GetMessageCreate] -> IO T.Text
+typeDM posttx postdata tw = do
+ postDM posttx ((getsender_id.getmessage_create.head) tw)
+ return (T.pack "")
 
- -- get mentions timeline
- -- main
--- direct_message <- getGetDM
--- case direct_message of
---  Right dm -> monitoring (setPostData ((getcreated_timestamp . head . getevents) dm, oldcalcweb, [], False)) >> putStrLn "fin"
+typeTL :: T.Text -> PostData -> [GetMessageCreate] -> IO T.Text
+typeTL posttx postdata tw = do 
+ response <- tweet posttx
+ postSlack posttx
+ case response of
+  Left err -> return (T.pack "")
+  Right re -> return (id_str re)
 
+typeTerm :: T.Text -> PostData -> [GetMessageCreate] -> IO T.Text 
+typeTerm posttx postdata tw = do
+ print posttx
+ return (T.pack "")
 
---typeDM :: T.Text -> PostData -> GetMention -> [String] -> IO T.Text
---typeDM posttx postdata tw botconf = do
--- postDM posttx ((getsender_id.getmessage_create.head) tw) botconf
--- return (T.pack "")
---
---typeTL :: T.Text -> PostData -> GetMention -> [String] -> IO T.Text
---typeTL posttx postdata tw botconf = do 
--- response <- tweet posttx botconf
--- postSlack posttx
--- case response of
---  Left err -> return (T.pack "")
---  Right re -> return (id_str re)
---
---typeTerm :: T.Text -> PostData -> GetMention -> [String] -> IO T.Text 
---typeTerm posttx postdata tw botconf = do
--- print posttx
--- return (T.pack "")

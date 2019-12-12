@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: a35c85e725f91e451a37aaff88edcef74f2c04d13e27440ae407ce3ca6b9875f
+-- hash: 72f7daf82a3a159210f8d8c880bba2476954f5d18b5e1eec61d280765fc85c5f
 
 name:           calc-tweet
 version:        0.1.0.0
@@ -27,11 +27,7 @@ source-repository head
 
 library
   exposed-modules:
-      Exec
-      Lib
-      Parser
-      SlackAPI
-      TwitterAPI
+      Lib, TwitterAPI, SlackAPI
   other-modules:
       Paths_calc_tweet
   hs-source-dirs:
@@ -41,16 +37,15 @@ library
     , authenticate-oauth
     , base >=4.7 && <5
     , bytestring
-    , directory
     , http-conduit
-    , mtl
-    , slack-api
     , text
     , time
-    , vector
+    , slack-api
+    , mtl
+    , directory
   default-language: Haskell2010
 
-executable calc-tweet-exe
+executable calc-tweet
   main-is: Main.hs
   other-modules:
       Paths_calc_tweet
@@ -60,8 +55,8 @@ executable calc-tweet-exe
   build-depends:
       base >=4.7 && <5
     , calc-tweet
-    , directory
     , text
+    , directory
     , time
     , vector
   default-language: Haskell2010
@@ -77,8 +72,8 @@ test-suite calc-tweet-test
   build-depends:
       base >=4.7 && <5
     , calc-tweet
-    , directory
     , text
+    , directory
     , time
     , vector
   default-language: Haskell2010

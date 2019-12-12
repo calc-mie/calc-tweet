@@ -2,33 +2,29 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE OverloadedLists #-}
 
-module TwitterAPI ( GetDM (..)
+module TwitterAPI ( permitconf
+                  , noticetempconf
+                  , calcwebtempconf
+                  , GetDM (..)
                   , GetMessageData (..)
                   , GetMessageCreate (..)
                   , GetEvents (..)
-                  , PostTarget (..)
+                  , PostRecipient (..)
                   , PostDM (..)
                   , PostMessageData (..)
                   , PostMessageCreate (..)
                   , PostEvent (..)
-                  , GetTL (..)
+                  , Tweet (..)
                   , PostTL (..)
                   , User (..)
-                  , GetMention (..)
-                  , getDM
+                  , getGetDM
                   , getTL
                   , getUser
-                  , getUserTL
-                  , getMention
-                  , rmTweet
                   , postRT
                   , postDM
-                  , tweet
-                  , getAPIkeys ) where
+                  , tweet) where
 
-import System.IO
 import Control.Concurrent
-import Control.Exception
 import Data.Text
 import Data.Text.IO 
 import Data.Text.Encoding
@@ -42,178 +38,136 @@ import Web.Authenticate.OAuth
 import Data.ByteString.Lazy.Internal
 import Control.Monad.IO.Class
 
+permitconf = "/usr/local/calc-tweet/permissionuser.conf"
+noticetempconf = "/usr/local/calc-tweet/temp/notice.conf"
+calcwebtempconf = "/usr/local/calc-tweet/temp/web.conf"
+twitterbotconf = "/usr/local/calc-tweet/bot/twitterbot.conf"
+
+
 -- get DM parser
-data GetMessageData = GetMessageData { gmd_text :: Text
+data GetDM = GetDM { gettext :: Text
                    } deriving(Show)
-$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 4 } ''GetMessageData)
+$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 3 } ''GetDM)
 
-data GetMessageCreate = GetMessageCreate { gmc_message_data :: GetMessageData
-                                         , gmc_sender_id :: Text
-                                         } deriving(Show)
-$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 4 } ''GetMessageCreate)
+data GetMessageData = GetMessageData { getmessage_data :: GetDM
+                                     , getsender_id :: Text
+                                      } deriving(Show)
+$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 3 } ''GetMessageData)
 
-data GetEvents = GetEvents { gev_message_create :: GetMessageCreate
-                           , gev_created_timestamp :: Text
+data GetMessageCreate = GetMessageCreate { getmessage_create :: GetMessageData
+                                         , getcreated_timestamp :: Text
+                                          } deriving (Show)
+$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 3 } ''GetMessageCreate)
+
+data GetEvents = GetEvents { getevents :: [GetMessageCreate]
                            } deriving (Show)
-$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 4 } ''GetEvents)
-
-data GetDM = GetDM { gdm_events :: [GetEvents]
-                   } deriving (Show)
-$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 4 } ''GetDM)
+$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 3 } ''GetEvents)
 
 -- post DM parser
-data PostTarget = PostTarget { ptg_recipient_id :: Text
-                             } deriving (Show)
-$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 4 } ''PostTarget)
+data PostRecipient = PostRecipient { postrecipient_id :: Text
+                                   } deriving (Show)
+$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 4 } ''PostRecipient)
 
-data PostMessageData = PostMessageData { pmd_text :: Text
-                                       } deriving (Show)
-$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 4 } ''PostMessageData)
-
-data PostMessageCreate = PostMessageCreate { pmc_message_data :: PostMessageData
-                                           , pmc_target :: PostTarget
-                                           } deriving (Show)
-$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 4 } ''PostMessageCreate)
-
-data PostEvent = PostEvent { pev_type :: Text
-                           , pev_message_create :: PostMessageCreate
-                           } deriving (Show)
-$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 4 } ''PostEvent)
-
-data PostDM = PostDM { pdm_event :: PostEvent
+data PostDM = PostDM { posttext :: Text
                      } deriving (Show)
 $(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 4 } ''PostDM)
 
---get User parser
-data User = User { gur_id_str :: Text
-                 , gur_screen_name :: Text } deriving (Show)
-$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 4 }  ''User)
+data PostMessageData = PostMessageData { postmessage_data :: PostDM 
+                                       , posttarget :: PostRecipient
+                                        } deriving (Show)
+$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 4 } ''PostMessageData)
 
---get TL Parser
-data GetTL = GetTL { gtl_text :: Text
-                   , gtl_id_str :: Text
-                   , gtl_in_reply_to_status_id_str :: Maybe Text
-                   , gtl_user :: User } deriving (Show)
-$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 4 } ''GetTL)
+data PostMessageCreate = PostMessageCreate { posttype :: Text
+                                           , postmessage_create :: PostMessageData
+                                           } deriving (Show)
+$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 4 } ''PostMessageCreate)
+
+data PostEvent = PostEvent { postevent :: PostMessageCreate
+                              } deriving (Show)
+$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 4 } ''PostEvent)
 
 --post TL parser
-data PostTL = PostTL { ptl_id_str :: Text} deriving (Show)
-$(deriveJSON defaultOptions {fieldLabelModifier = Prelude.drop 4 } ''PostTL)
+data Tweet = Tweet { text :: Text} deriving (Show)
+$(deriveJSON defaultOptions  ''Tweet)
 
---get Mention parser
-data GetMention = GetMention { gmt_id_str :: Text
-                             , gmt_text   :: Text
-                             , gmt_user   :: User} deriving (Show)
-$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 4 }  ''GetMention)
+data PostTL = PostTL { id_str :: Text} deriving (Show)
+$(deriveJSON defaultOptions ''PostTL)
 
-getDM :: [String] -> IO (Either String GetDM)
-getDM botconf = do
+--get User parser
+data User = User { gid_str :: Text } deriving (Show)
+$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 1 }  ''User)
+
+getGetDM :: IO (Either String GetEvents)
+getGetDM = do
  response <- do
-  req <- parseRequest $ "https://api.twitter.com/1.1/direct_messages/events/list.json"
-  httpManager req botconf
+  req <- parseRequest  "https://api.twitter.com/1.1/direct_messages/events/list.json"
+  httpManager req
  return $ eitherDecode $ responseBody response
 
-getMyTweet :: [String] -> IO(Either String [GetTL])
-getMyTweet botconf = do
+getMyTweet :: IO(Either String [Tweet])
+getMyTweet = do
  response <- do
-  req <- parseRequest $ "https://api.twitter.com/1.1/statuses/user_timeline.json"
-  httpManager req botconf
+  req <- parseRequest  "https://api.twitter.com/1.1/statuses/user_timeline.json"
+  httpManager req
  return $ eitherDecode $ responseBody response
 
-getTL :: [String] -> IO (Either String [GetTL])
-getTL botconf = do
+getTL :: IO (Either String [Tweet])
+getTL = do
  response <- do
-  req <- parseRequest $ "https://api.twitter.com/1.1/statuses/home_timeline.json?count=200"
-  httpManager req botconf
+  req <- parseRequest  "https://api.twitter.com/1.1/statuses/home_timeline.json?count=1"
+  httpManager req
  return $ eitherDecode $ responseBody response
 
-getUserTL :: Text -> Text -> [String] -> IO (Either String [GetTL])
-getUserTL user_id since_id botconf = do
- response <- do
-  req <- parseRequest $ "https://api.twitter.com/1.1/statuses/home_timeline.json?count=200&user_id=" ++ unpack user_id ++
-                                                                                         "&since_id=" ++ unpack since_id
-  httpManager req botconf
- return $ eitherDecode $ responseBody response
-
-getMention :: Text -> [String] -> IO(Either String [GetMention])
-getMention since_id botconf = do
- response <- do
-  req <- parseRequest $ "https://api.twitter.com/1.1/statuses/mentions_timeline.json?since_id=" ++ unpack since_id
-  httpManager req botconf
- return $ eitherDecode $ responseBody response
-
-getUser :: Text -> [String] -> IO (Either String [User])
-getUser screen_name botconf = do
+getUser :: Text -> IO (Either String [User])
+getUser screen_name = do
  response <- do
   req <- parseRequest $ "https://api.twitter.com/1.1/users/lookup.json?screen_name="++unpack screen_name
-  httpManager req botconf
+  httpManager req
  return $ eitherDecode $ responseBody response
 
-postRT :: Text -> [String] -> IO ()
-postRT twid botconf = do
+postRT :: Text -> IO ()
+postRT twid = do
  req     <- parseRequest $ "https://api.twitter.com/1.1/statuses/retweet/" ++ unpack twid ++ ".json"
  manager <- newManager tlsManagerSettings
  let postReq = urlEncodedBody [("id", encodeUtf8 twid)] req
- httpManager postReq botconf
+ httpManager postReq
  return ()
 
-tweet :: Text -> Text -> [String] -> IO (Either String PostTL)
-tweet tw twid botconf = do
+tweet :: Text -> IO (Either String PostTL)
+tweet tw = do
  responce <- do
-  req     <- parseRequest $ "https://api.twitter.com/1.1/statuses/update.json" ++ if Data.Text.null twid then "" 
-                                                                                  else "?in_reply_to_status_id=" ++ unpack twid
+  req     <- parseRequest "https://api.twitter.com/1.1/statuses/update.json"
   let postReq = urlEncodedBody [("status", encodeUtf8 tw)] req
-  httpManager postReq botconf
+  httpManager postReq
  return $ eitherDecode $ responseBody responce
 
-rmTweet :: Text -> [String] -> IO()
-rmTweet twid botconf = do
- req     <- parseRequest $ "https://api.twitter.com/1.1/statuses/destroy.json?id=" ++ unpack twid
- httpManager req botconf
- return ()
-
-postDM :: Text -> Text -> [String] -> IO ()
-postDM tw uid botconf = do
+postDM :: Text -> Text -> IO ()
+postDM tw un = do
  responce <- do
   req <-(\n->n {method = "POST"}) <$>parseRequest "https://api.twitter.com/1.1/direct_messages/events/new.json"  
-  let json = PostDM { pdm_event = PostEvent 
-                                  { pev_type = "message_create" 
-                                  , pev_message_create = PostMessageCreate
-                                                         { pmc_message_data = PostMessageData { pmd_text = tw}
-                                                         , pmc_target = PostTarget { ptg_recipient_id = uid}}}}
+  let json = PostEvent { postevent = PostMessageCreate 
+                                    { posttype = "message_create" 
+                                    , postmessage_create = PostMessageData 
+                                                            { postmessage_data = PostDM { posttext = tw}
+                                                            , posttarget = PostRecipient { postrecipient_id = un}}}}
   let postreq = setRequestBodyJSON json req
-  httpManager postreq botconf
+  httpManager postreq
  return ()
 
-httpManager :: Request -> [String] ->  IO(Response Data.ByteString.Lazy.Internal.ByteString)
-httpManager req botconf = do
- (myOAuth, myCredential) <- botuser botconf
+httpManager :: Request -> IO(Response Data.ByteString.Lazy.Internal.ByteString)
+httpManager req = do
+ (myOAuth, myCredential) <- botuser
  signedReq <- signOAuth myOAuth myCredential req
  manager <- newManager tlsManagerSettings
  Network.HTTP.Conduit.httpLbs signedReq manager
 
-botuser :: [String] -> IO(OAuth,Credential)
-botuser botsparameter = do
+botuser :: IO(OAuth,Credential)
+botuser = do
+ botsparameter <- Prelude.lines <$> Prelude.readFile twitterbotconf
  let  myOAuth      = newOAuth { oauthServerName     = "api.twitter.com"
                               , oauthConsumerKey    = C.pack(Prelude.head botsparameter)
                               , oauthConsumerSecret = C.pack(botsparameter !! 1)
   }
       myCredential = newCredential (C.pack(botsparameter !! 2)) (C.pack(botsparameter !! 3))
  return (myOAuth, myCredential)
-
-getAPIkeys :: IO [String]
-getAPIkeys = do
- hSetEcho stdin False
- apis <- subGetAPI ["API key :", "API secret key :", "Access token :", "Access token secret :"]
- hSetEcho stdin True
- return apis
- where
-  subGetAPI :: [String] -> IO[String]
-  subGetAPI [] = return []
-  subGetAPI (m:messages) = do
-   Prelude.putStr m 
-   hFlush stdout
-   api <- Prelude.getLine 
-   Prelude.putChar '\n'
-   subGetAPI messages >>= (\res -> return (api:res))
 
