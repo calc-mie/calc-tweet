@@ -67,6 +67,23 @@ twrmCmd msg botconf func = existInGroup (queueToUser msg) (T.pack "post") >>= \x
  rmTweets postmsg msg postTarget botconf
  return V.empty
 
+twgroupCmd :: PostQueue -> [String] -> Postfunc -> IO (V.Vector (T.Text, ZonedTime))
+twgroupCmd msg botconf func = existInGroup (queueToUser msg) (T.pack "all") >>= \x -> if not x then return V.empty else do
+ let user_id  = (gur_id_str.gmt_user.V.head.mentions) msg    -- twitter api name
+     since_id = getTweetId msg -- twitter api name
+ userTL <- (\t -> case t of  Left e  -> error e
+                             Right l -> (V.reverse.V.fromList) l) <$> getUserTL user_id since_id botconf
+ (group, users) <- groupAndUsers (filterCmd msg 2)
+ let postmsg    = T.pack $ '@':(T.unpack.gur_id_str.gmt_user.V.head.mentions) msg ++ (if T.null group then "group is not exist..."
+                                                                                                      else "post done.")
+     postTarget = if T.null group then T.empty
+                                  else T.append (replyUsers users) (searchReplyTree since_id userTL) -- search and sed
+ postTweet postmsg msg postTarget botconf $ tl func
+ return V.empty
+  where
+   replyUsers :: V.Vector T.Text -> T.Text
+   replyUsers users = T.append (T.singleton '@') ((T.intercalate (T.pack " @").V.toList) users)
+
 twHelpCmd :: PostQueue -> [String] -> Postfunc -> IO (V.Vector (T.Text, ZonedTime))
 twHelpCmd msg botconf func = existInGroup (queueToUser msg) (T.pack "all") >>= \x -> if not x then return V.empty else do
  let postTarget = T.empty
@@ -113,29 +130,46 @@ uhelpCmd msg botconf func = existInGroup (queueToUser msg) (T.pack "all") >>= \x
  return V.empty
 
 -- group command part
----- calc-tweet group create name
---gcreateCmd :: PostQueue -> [String] -> (T.Text -> T.Text -> [String] -> IO(T.Text)) -> IO (V.Vector (T.Text, ZonedTime))
---gcreateCmd msg botconf func = getPermitUser((gid_str.gmuser.V.head.mentions)msg) 2 >>= \x -> if not x then return V.empty else do
---
----- calc-tweet group add group user
---gaddCmd :: PostQueue -> [String] -> (T.Text -> T.Text -> [String] -> IO(T.Text)) -> IO (V.Vector (T.Text, ZonedTime))
---gaddCmd msg botconf func = getPermitUser((gid_str.gmuser.V.head.mentions)msg) 2 >>= \x -> if not x then return V.empty else do
---
----- calc-tweet group rm group user
---grmCmd :: PostQueue -> [String] -> (T.Text -> T.Text -> [String] -> IO(T.Text)) -> IO (V.Vector (T.Text, ZonedTime))
---grmCmd msg botconf func = getPermitUser((gid_str.gmuser.V.head.mentions)msg) 2 >>= \x -> if not x then return V.empty else do
---
----- calc-tweet group delete name
---gdeleteCmd :: PostQueue -> [String] -> (T.Text -> T.Text -> [String] -> IO(T.Text)) -> IO (V.Vector (T.Text, ZonedTime))
---gdeleteCmd msg botconf func = getPermitUser((gid_str.gmuser.V.head.mentions)msg) 2 >>= \x -> if not x then return V.empty else do
---
----- calc-tweet group show name post DM 
---gshowCmd :: PostQueue -> [String] -> (T.Text -> T.Text -> [String] -> IO(T.Text)) -> IO (V.Vector (T.Text, ZonedTime))
+-- calc-tweet group create name
+gcreateCmd :: PostQueue -> [String] -> Postfunc -> IO (V.Vector (T.Text, ZonedTime))
+gcreateCmd msg botconf func = existInGroup (queueToUser msg) (T.pack "sudo") >>= \x -> if not x then return V.empty else do
+ addGroup (filterCmd msg 2)
+ return V.empty
+
+-- calc-tweet group add group user
+gaddCmd :: PostQueue -> [String] -> Postfunc -> IO (V.Vector (T.Text, ZonedTime))
+gaddCmd msg botconf func = existInGroup (queueToUser msg) (T.pack "sudo") >>= \x -> if not x then return V.empty else do
+ let group   = filterCmd msg 2
+ let addUser = filterCmd msg 3
+ addUserInGroup addUser group
+ return V.empty
+
+-- calc-tweet group rm group user
+grmCmd :: PostQueue -> [String] -> Postfunc -> IO (V.Vector (T.Text, ZonedTime))
+grmCmd msg botconf func = existInGroup (queueToUser msg) (T.pack "sudo") >>= \x -> if not x then return V.empty else do
+ let group  = filterCmd msg 2
+     rmUser = filterCmd msg 3
+ rmUserInGroup rmUser group
+ return V.empty
+
+-- calc-tweet group delete name
+gdeleteCmd :: PostQueue -> [String] -> Postfunc -> IO (V.Vector (T.Text, ZonedTime))
+gdeleteCmd msg botconf func = existInGroup (queueToUser msg) (T.pack "sudo") >>= \x -> if not x then return V.empty else do
+ deleteGroup (filterCmd msg 2)
+ return V.empty
+
+-- calc-tweet group show name post DM 
+--gshowCmd :: PostQueue -> [String] -> Postfunc -> IO (V.Vector (T.Text, ZonedTime))
 --gshowCmd msg botconf func = getPermitUser((gid_str.gmuser.V.head.mentions)msg) 2 >>= \x -> if not x then return V.empty else do
---
----- calc-tweet group help
---ghelpCmd :: PostQueue -> [String] -> (T.Text -> T.Text -> [String] -> IO(T.Text)) -> IO (V.Vector (T.Text, ZonedTime))
---ghelpCmd msg botconf func = getPermitUser((gid_str.gmuser.V.head.mentions)msg) 0 >>= \x -> if not x then return V.empty else do
+
+-- calc-tweet group help
+ghelpCmd :: PostQueue -> [String] -> Postfunc -> IO (V.Vector (T.Text, ZonedTime))
+ghelpCmd msg botconf func = existInGroup (queueToUser msg) (T.pack "sudo") >>= \x -> if not x then return V.empty else do
+ let user_id    = (gur_id_str.gmt_user.V.head.mentions) msg
+     postTarget = T.empty
+ postmsg <- TIO.readFile gHelpFile
+ postTweet postmsg msg postTarget botconf $ dm func 
+ return V.empty
 
 -- error command part
 errorCmd :: PostQueue -> [String] -> Postfunc -> IO (V.Vector (T.Text, ZonedTime)) -- post error

@@ -36,6 +36,7 @@ data Postfunc = Postfunc { tl :: T.Text -> T.Text -> [String] -> IO(T.Text)
 --reminddir = "/usr/local/calc-tweet/reminder/"
 twHelpFile = "/usr/local/calc-tweet/helps/tweet.txt"
 uHelpFile = "/usr/local/calc-tweet/helps/tweet.txt"
+gHelpFile = "/usr/local/calc-tweet/helps/tweet.txt"
 groupsconf = "/usr/local/calc-tweet/groups.conf"
 
 emptyint = 1*1000*1000  :: Int {- 1 second -} 
@@ -67,6 +68,12 @@ rmDup :: [T.Text] -> [T.Text]
 rmDup = foldl (\seen x -> if x `elem` seen then seen else x:seen) []
 
 filterCmd vmsgq n = ((!! n).Prelude.head.Prelude.map T.words.T.lines.gmt_text.V.head.mentions) vmsgq 
+
+isEqStrText :: String -> T.Text -> Bool
+isEqStrText str tx = case (Prelude.null str, T.null tx) of
+ (True, True)   -> True
+ (False, False) -> if((Prelude.head str) == (T.head tx)) then isEqStrText (Prelude.tail str) (T.tail tx) else False
+ otherwise      -> False
 
 -- getPermitUser :: T.Text -> Int -> IO Bool
 -- getPermitUser uid n = if n < 0 || 4 < n then error "getPermitUser :: error" else do
@@ -103,15 +110,19 @@ commaIns = T.intercalate (T.singleton ',')
 
 strToBool str = if str == T.pack "True" then True else False
 
-userInGroup :: T.Text -> IO (V.Vector T.Text)
-userInGroup group = do
+groupAndUsers :: T.Text -> IO (T.Text, V.Vector T.Text)
+groupAndUsers group = do
  all <- V.fromList.Prelude.map (V.fromList.commaSep).T.lines <$> TIO.readFile groupsconf
  case V.find ((==group).V.head) all of
-  Nothing -> return V.empty
-  Just gr -> return $ V.tail gr
+  Nothing -> return $ (T.empty, V.empty)
+  Just gr -> return $ (V.head gr, V.tail gr)
+
+userInGroup :: T.Text -> IO (V.Vector T.Text)
+userInGroup group = groupAndUsers group >>= return.snd
 
 allUsers ::  IO (V.Vector T.Text)
-allUsers = TIO.readFile groupsconf >>= return.V.fromList.L.nub.Prelude.concat.Prelude.map (Prelude.tail.commaSep).T.lines
+allUsers = userInGroup $ T.pack "all"
+-- TIO.readFile groupsconf >>= return.V.fromList.L.nub.Prelude.concat.Prelude.map (Prelude.tail.commaSep).T.lines
 
 existInGroup :: T.Text -> T.Text -> IO Bool
 existInGroup user group = do
@@ -156,6 +167,17 @@ rmUserInGroup user group = do
 
 queueToUser :: PostQueue -> T.Text
 queueToUser = gur_screen_name.gmt_user.V.head.mentions
+
+addGroup :: T.Text -> IO()
+addGroup group = TIO.appendFile groupsconf group
+
+deleteGroup :: T.Text -> IO()
+deleteGroup group = do
+ raw <- T.lines <$> TIO.readFile groupsconf 
+ TIO.writeFile groupsconf $ subDelete group raw
+  where
+   subDelete :: T.Text -> [T.Text] -> T.Text
+   subDelete group raw = (T.unlines.filter (/= group)) raw
 
 -- before refuctoring, all comment out below
 -- postTweet :: T.Text -> PostQueue -> T.Text -> [String] -> IO() 

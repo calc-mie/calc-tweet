@@ -138,7 +138,7 @@ getUserTL user_id since_id botconf = do
 getMention :: Text -> [String] -> IO(Either String [GetMention])
 getMention since_id botconf = do
  response <- do
-  req <- parseRequest $ "https://api.twitter.com/1.1/statuses/mentions_timeline.json?since_id" ++ unpack since_id
+  req <- parseRequest $ "https://api.twitter.com/1.1/statuses/mentions_timeline.json?since_id=" ++ unpack since_id
   httpManager req botconf
  return $ eitherDecode $ responseBody response
 

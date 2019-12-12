@@ -6,8 +6,8 @@ module Main(main) where
 import Lib
 import TwitterAPI
 import SlackAPI
-import CalcParser.Parser
-import CalcParser.Exec
+import Parser
+import Exec
 
 import Control.Concurrent
 import qualified Data.Text.IO as TIO
@@ -21,18 +21,27 @@ import Control.Exception
 
 main = do
  -- calcweb-post
- oldcalcweb <- getDirectoryContents srvcalcdir
+ -- oldcalcweb <- getDirectoryContents srvcalcdir
  -- api key
  hSetEcho stdin False
- botconf <- getAPIkeys ["API key :", "API secret key :", "Access token :", "Access token secret :"]
+ botconf <- getAPIkeys
  hSetEcho stdin True
  -- message queue
  msgqueue <- newMVar PostQueue{mentions = V.empty, schedule = V.empty } :: IO (MVar PostQueue)
  -- main
  tlmention <- (\t -> case t of Left  e -> error e
-                               Right l -> (gmid_str.Prelude.head) l) <$> getMention T.empty botconf
- monitoring msgqueue tlmention botconf
+                               Right l -> (gmt_id_str.Prelude.head) l) <$> getMention (T.singleton '1') botconf
+ monitoring msgqueue tlmention botconf (Postfunc {tl = showTL, dm = showDM })
 
+showTL :: T.Text -> T.Text -> [String] -> IO(T.Text)
+showTL msg id conf = do
+ print msg
+ putStrLn ""
+ print id 
+ putStrLn ""
+ return T.empty
+
+showDM = showTL
 
 --main = do
 -- print "test startiing!!!"

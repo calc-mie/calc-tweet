@@ -6,8 +6,8 @@ module Main(main) where
 import Lib
 import TwitterAPI
 import SlackAPI
-import CalcParser.Parser
-import CalcParser.Exec
+import Parser
+import Exec
 
 import Control.Concurrent
 import qualified Data.Text.IO as TIO
@@ -21,20 +21,20 @@ import Control.Exception
 
 main = do
  -- calcweb-post
- oldcalcweb <- getDirectoryContents srvcalcdir
+ --oldcalcweb <- getDirectoryContents srvcalcdir
  -- api key
  botconf <- getAPIkeys
  -- message queue
  msgqueue <- newMVar PostQueue{mentions = V.empty, schedule = V.empty } :: IO (MVar PostQueue)
  -- main
  tlmention <- (\t -> case t of Left  e -> error e
-                               Right l -> (gmid_str.Prelude.head) l) <$> getMention T.empty botconf
+                               Right l -> (gmt_id_str.Prelude.head) l) <$> getMention T.empty botconf
 
  monitoring msgqueue tlmention botconf (Postfunc { tl = showTL, dm = showDM })
 
 showTL :: T.Text -> T.Text -> [String] -> IO(T.Text)
 showTL msg id conf = tweet msg id conf >>= (\tl -> return (case tl of Left  e -> error e
-                                                                      Right t -> post_tl_id_str t))
+                                                                      Right t -> ptl_id_str t))
 
 showDM :: T.Text -> T.Text -> [String] -> IO(T.Text)
 showDM msg id conf = postDM msg id conf >> return T.empty

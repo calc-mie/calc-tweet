@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: ff6e1bf88fff4963ec4f5b8b4ced357b6c1977815f631b55d21925d01ec44306
+-- hash: a35c85e725f91e451a37aaff88edcef74f2c04d13e27440ae407ce3ca6b9875f
 
 name:           calc-tweet
 version:        0.1.0.0
@@ -53,8 +53,6 @@ library
 executable calc-tweet-exe
   main-is: Main.hs
   other-modules:
-      CalcParser.Exec
-      CalcParser.Parser
       Paths_calc_tweet
   hs-source-dirs:
       app
@@ -72,8 +70,6 @@ test-suite calc-tweet-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
-      CalcParser.Exec
-      CalcParser.Parser
       Paths_calc_tweet
   hs-source-dirs:
       test
