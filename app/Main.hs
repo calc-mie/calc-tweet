@@ -29,7 +29,6 @@ main = do
  -- main
  tlmention <- (\t -> case t of Left  e -> error e
                                Right l -> (gmt_id_str.Prelude.head) l) <$> getMention T.empty botconf
-
  monitoring msgqueue tlmention botconf (Postfunc { tl = showTL, dm = showDM })
 
 showTL :: T.Text -> T.Text -> [String] -> IO(T.Text)

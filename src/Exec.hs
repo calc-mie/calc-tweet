@@ -20,9 +20,9 @@ postTweet :: T.Text -> PostQueue -> T.Text -> [String] -> (T.Text -> T.Text -> [
 postTweet usermsg postq postTarget botconf func = if T.null postTarget then return () else do
  let msgs = splitN postTarget 140 -- 140 is twitter max size
  start_id <- func (Prelude.head msgs) (T.empty) botconf -- Timeline
- postTweetInReply (Prelude.tail msgs) start_id func
- func usermsg ((gmt_id_str.V.head.mentions) postq) botconf
- return ()
+ if (not.Prelude.null) msgs then postTweetInReply (Prelude.tail msgs) start_id func else do
+  func usermsg ((gmt_id_str.V.head.mentions) postq) botconf
+  return ()
  where
   splitN :: T.Text -> Int -> [T.Text] 
   splitN raw max = if T.length raw <= max then [raw] else (T.take max raw):splitN (T.drop max raw) max
@@ -133,29 +133,30 @@ uhelpCmd msg botconf func = existInGroup (queueToUser msg) (T.pack "all") >>= \x
 -- calc-tweet group create name
 gcreateCmd :: PostQueue -> [String] -> Postfunc -> IO (V.Vector (T.Text, ZonedTime))
 gcreateCmd msg botconf func = existInGroup (queueToUser msg) (T.pack "sudo") >>= \x -> if not x then return V.empty else do
- addGroup (filterCmd msg 2)
+ putStrLn "add group"
+ addGroup (filterCmd msg 3)
  return V.empty
 
 -- calc-tweet group add group user
 gaddCmd :: PostQueue -> [String] -> Postfunc -> IO (V.Vector (T.Text, ZonedTime))
 gaddCmd msg botconf func = existInGroup (queueToUser msg) (T.pack "sudo") >>= \x -> if not x then return V.empty else do
- let group   = filterCmd msg 2
- let addUser = filterCmd msg 3
+ let group   = filterCmd msg 3 
+ let addUser = filterCmd msg 4
  addUserInGroup addUser group
  return V.empty
 
 -- calc-tweet group rm group user
 grmCmd :: PostQueue -> [String] -> Postfunc -> IO (V.Vector (T.Text, ZonedTime))
 grmCmd msg botconf func = existInGroup (queueToUser msg) (T.pack "sudo") >>= \x -> if not x then return V.empty else do
- let group  = filterCmd msg 2
-     rmUser = filterCmd msg 3
+ let group  = filterCmd msg 3
+     rmUser = filterCmd msg 4
  rmUserInGroup rmUser group
  return V.empty
 
 -- calc-tweet group delete name
 gdeleteCmd :: PostQueue -> [String] -> Postfunc -> IO (V.Vector (T.Text, ZonedTime))
 gdeleteCmd msg botconf func = existInGroup (queueToUser msg) (T.pack "sudo") >>= \x -> if not x then return V.empty else do
- deleteGroup (filterCmd msg 2)
+ deleteGroup (filterCmd msg 3)
  return V.empty
 
 -- calc-tweet group show name post DM 

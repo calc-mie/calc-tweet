@@ -43,19 +43,24 @@ monitoring msgq since_id botconf func = do
 
 cmdCheck :: MVar PostQueue -> [String] -> Postfunc -> IO ()
 cmdCheck msgq botconf postfunc = readMVar msgq >>= \nowq -> if (V.null.mentions) nowq then return () else do
+ putStrLn "cmdCheck ====="
  let command = case T.unpack (filterCmd nowq 1) of
                     "tweet" -> tweetCmd nowq 
                     "user"  -> userCmd nowq
                     "group" -> groupCmd nowq
 --                  "web"   -> webCmd nowq
                     _       -> errorCmd
+ putStrLn "command select"
  sc <- command nowq botconf postfunc
- addDeleteSchedule msgq sc  -- add or deleteschedule 
+ putStrLn "commend end"
+ addDeleteSchedule msgq sc  -- add or delete schedule 
+ putStrLn "next schedule"
  threadDelay cmdt
+ putStrLn "end cmdCheck ====="
  cmdCheck msgq botconf postfunc
   where
-   addDeleteSchedule q d = takeMVar msgq >>= \x -> putMVar msgq x{ mentions = (V.tail.mentions)x
-                                                                 , schedule =  if V.null d then schedule x else schedule x V.++ d} 
+   addDeleteSchedule q d = takeMVar q >>= \x -> putMVar q x { mentions = if (V.null.mentions) x then V.empty else  (V.tail.mentions)x
+                                                            , schedule = if V.null d then schedule x else schedule x V.++ d} 
    cmdt = 60*1000*1000 -- 1min
 
 -- tweet command 

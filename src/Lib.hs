@@ -14,6 +14,7 @@ import qualified Data.Text.IO as TIO
 import qualified Data.Text as T
 import qualified Data.Vector as V
 
+
 -- have to MVector
 data PostQueue = PostQueue { mentions :: V.Vector GetMention
                            , schedule :: V.Vector (T.Text, ZonedTime)-- twid, retweet time
@@ -103,7 +104,9 @@ splitChar :: T.Text -> (T.Text, Bool, Bool, Bool)
 splitChar = ((\[a,b,c,d] -> (a,strToBool b,strToBool c,strToBool d)).commaSep) 
 
 commaSep :: T.Text -> [T.Text]
-commaSep text = if T.null text then [] else T.takeWhile (/=',') text:commaSep ((T.tail.(T.dropWhile (/=','))) text)
+-- commaSep text = if T.null text then [] else T.takeWhile (/=',') text:commaSep ((T.tail.(T.dropWhile (/=','))) text)
+commaSep text = T.split (==',') text
+
 
 commaIns :: [T.Text] -> T.Text
 commaIns = T.intercalate (T.singleton ',')
@@ -112,7 +115,9 @@ strToBool str = if str == T.pack "True" then True else False
 
 groupAndUsers :: T.Text -> IO (T.Text, V.Vector T.Text)
 groupAndUsers group = do
- all <- V.fromList.Prelude.map (V.fromList.commaSep).T.lines <$> TIO.readFile groupsconf
+ h <- openFile groupsconf ReadMode
+ all <- V.fromList.Prelude.map (V.fromList.commaSep).T.lines <$> TIO.hGetContents h
+ System.IO.hClose h
  case V.find ((==group).V.head) all of
   Nothing -> return $ (T.empty, V.empty)
   Just gr -> return $ (V.head gr, V.tail gr)
@@ -127,6 +132,7 @@ allUsers = userInGroup $ T.pack "all"
 existInGroup :: T.Text -> T.Text -> IO Bool
 existInGroup user group = do
  us <- userInGroup group
+ print us
  case V.find (== user) us of
   Nothing -> return False
   Just u  -> return True
@@ -140,24 +146,28 @@ existUser user = do
 
 addUserInGroup :: T.Text -> T.Text -> IO ()
 addUserInGroup user group = do
- raw <- Prelude.map commaSep.T.lines <$> TIO.readFile groupsconf
+ h <- openFile groupsconf ReadWriteMode
+ raw <- Prelude.map commaSep.T.lines <$> TIO.hGetContents h
  case L.find ((==group).Prelude.head) raw of
-  Nothing -> return ()
-  Just a  -> TIO.writeFile groupsconf $ (T.unlines.Prelude.map commaIns) (appendUser user group raw)
+  Nothing -> System.IO.hClose h
+  Just a  -> TIO.hPutStrLn h ((T.unlines.Prelude.map commaIns) (appendUser user group raw)) >> print (appendUser user group raw) >> System.IO.hClose h
+ return ()
    where
     appendUser :: T.Text -> T.Text -> [[T.Text]] -> [[T.Text]]
     appendUser us gr []     = []
     appendUser us gr (r:rs) = case (((==gr).Prelude.head) r,L.find (==us) (Prelude.tail r)) of
      (True, Nothing) -> ((Prelude.head r):user:(Prelude.tail r)):appendUser us gr rs
-     otherwise         -> r:appendUser us gr rs
+     otherwise       -> r:appendUser us gr rs
  
 
 rmUserInGroup :: T.Text -> T.Text -> IO ()
 rmUserInGroup user group = do
- raw <- Prelude.map commaSep.T.lines <$> TIO.readFile groupsconf
+ h <- openFile groupsconf ReadWriteMode
+ raw <- Prelude.map commaSep.T.lines <$> TIO.hGetContents h
  case L.find ((==group).Prelude.head) raw of
-  Nothing -> return ()
-  Just a  -> TIO.writeFile groupsconf $(T.unlines.Prelude.map commaIns) (removeUser user group raw)
+  Nothing -> System.IO.hClose h
+  Just a  -> TIO.hPutStrLn h ((T.unlines.Prelude.map commaIns) (removeUser user group raw)) >> System.IO.hClose h
+ return ()
    where
     removeUser :: T.Text -> T.Text -> [[T.Text]] -> [[T.Text]]
     removeUser us gr [] = []
@@ -173,8 +183,10 @@ addGroup group = TIO.appendFile groupsconf group
 
 deleteGroup :: T.Text -> IO()
 deleteGroup group = do
- raw <- T.lines <$> TIO.readFile groupsconf 
- TIO.writeFile groupsconf $ subDelete group raw
+ h <- openFile groupsconf ReadWriteMode
+ raw <- T.lines <$> TIO.hGetContents h
+ TIO.hPutStrLn h $ subDelete group raw
+ System.IO.hClose h
   where
    subDelete :: T.Text -> [T.Text] -> T.Text
    subDelete group raw = (T.unlines.filter (/= group)) raw
