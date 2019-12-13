@@ -12,6 +12,8 @@ import Data.Time
 import qualified Data.List as L
 import qualified Data.Text.IO as TIO
 import qualified Data.Text as T
+import qualified Data.Text.Lazy as TLazy
+import qualified Data.Text.Lazy.IO as DTLIO
 import qualified Data.Vector as V
 
 
@@ -29,8 +31,8 @@ data Week = Monday
           | Sunday
           deriving (Show, Enum, Eq)
 
-data Postfunc = Postfunc { tl :: T.Text -> T.Text -> [String] -> IO(T.Text)
-                         , dm :: T.Text -> T.Text -> [String] -> IO(T.Text)}
+data Postfunc = Postfunc { tl     :: T.Text -> T.Text -> [String] -> IO(T.Text)
+                         , dm     :: T.Text -> T.Text -> [String] -> IO(T.Text)}
 
 --calcwebdir = "/home/share/posts/posts-available/"
 --srvcalcdir = "/srv/calc-web/posts"
@@ -116,23 +118,22 @@ strToBool str = if str == T.pack "True" then True else False
 groupAndUsers :: T.Text -> IO (T.Text, V.Vector T.Text)
 groupAndUsers group = do
  h <- openFile groupsconf ReadMode
- all <- V.fromList.Prelude.map (V.fromList.commaSep).T.lines <$> TIO.hGetContents h
- System.IO.hClose h
- case V.find ((==group).V.head) all of
+ all <- V.fromList.Prelude.map (V.fromList.commaSep).T.lines.TLazy.toStrict <$> DTLIO.hGetContents h
+ hClose h
+ case V.find ((==group).V.head) $ all of
   Nothing -> return $ (T.empty, V.empty)
   Just gr -> return $ (V.head gr, V.tail gr)
 
 userInGroup :: T.Text -> IO (V.Vector T.Text)
 userInGroup group = groupAndUsers group >>= return.snd
 
-allUsers ::  IO (V.Vector T.Text)
+allUsers :: IO (V.Vector T.Text)
 allUsers = userInGroup $ T.pack "all"
 -- TIO.readFile groupsconf >>= return.V.fromList.L.nub.Prelude.concat.Prelude.map (Prelude.tail.commaSep).T.lines
 
 existInGroup :: T.Text -> T.Text -> IO Bool
 existInGroup user group = do
  us <- userInGroup group
- print us
  case V.find (== user) us of
   Nothing -> return False
   Just u  -> return True
@@ -147,11 +148,10 @@ existUser user = do
 addUserInGroup :: T.Text -> T.Text -> IO ()
 addUserInGroup user group = do
  h <- openFile groupsconf ReadWriteMode
- raw <- Prelude.map commaSep.T.lines <$> TIO.hGetContents h
+ raw <- Prelude.map commaSep.T.lines.TLazy.toStrict <$> DTLIO.hGetContents h
  case L.find ((==group).Prelude.head) raw of
-  Nothing -> System.IO.hClose h
-  Just a  -> TIO.hPutStrLn h ((T.unlines.Prelude.map commaIns) (appendUser user group raw)) >> print (appendUser user group raw) >> System.IO.hClose h
- return ()
+  Nothing -> hClose h
+  Just a  -> TIO.hPutStrLn h ((T.unlines.Prelude.map commaIns) (appendUser user group raw)) >> hClose h
    where
     appendUser :: T.Text -> T.Text -> [[T.Text]] -> [[T.Text]]
     appendUser us gr []     = []
@@ -163,11 +163,10 @@ addUserInGroup user group = do
 rmUserInGroup :: T.Text -> T.Text -> IO ()
 rmUserInGroup user group = do
  h <- openFile groupsconf ReadWriteMode
- raw <- Prelude.map commaSep.T.lines <$> TIO.hGetContents h
+ raw <- Prelude.map commaSep.T.lines.TLazy.toStrict <$> DTLIO.hGetContents h
  case L.find ((==group).Prelude.head) raw of
-  Nothing -> System.IO.hClose h
-  Just a  -> TIO.hPutStrLn h ((T.unlines.Prelude.map commaIns) (removeUser user group raw)) >> System.IO.hClose h
- return ()
+  Nothing -> hClose h
+  Just a  -> TIO.hPutStrLn h ((T.unlines.Prelude.map commaIns) (removeUser user group raw)) >> hClose h
    where
     removeUser :: T.Text -> T.Text -> [[T.Text]] -> [[T.Text]]
     removeUser us gr [] = []
@@ -179,14 +178,19 @@ queueToUser :: PostQueue -> T.Text
 queueToUser = gur_screen_name.gmt_user.V.head.mentions
 
 addGroup :: T.Text -> IO()
-addGroup group = TIO.appendFile groupsconf group
+addGroup group = do
+ h <- openFile groupsconf ReadWriteMode
+ raw <- TLazy.toStrict <$> DTLIO.hGetContents h
+ DTLIO.putStrLn $ TLazy.fromStrict $ T.append raw $ T.append group (T.singleton '\n')
+ hClose h
+ 
 
 deleteGroup :: T.Text -> IO()
 deleteGroup group = do
  h <- openFile groupsconf ReadWriteMode
- raw <- T.lines <$> TIO.hGetContents h
+ raw <- T.lines.TLazy.toStrict <$> DTLIO.hGetContents h
  TIO.hPutStrLn h $ subDelete group raw
- System.IO.hClose h
+ hClose h
   where
    subDelete :: T.Text -> [T.Text] -> T.Text
    subDelete group raw = (T.unlines.filter (/= group)) raw

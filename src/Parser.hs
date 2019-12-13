@@ -53,7 +53,7 @@ cmdCheck msgq botconf postfunc = readMVar msgq >>= \nowq -> if (V.null.mentions)
  putStrLn "command select"
  sc <- command nowq botconf postfunc
  putStrLn "commend end"
- addDeleteSchedule msgq sc  -- add or delete schedule 
+ addDeleteSchedule msgq $! sc  -- add or delete schedule 
  putStrLn "next schedule"
  threadDelay cmdt
  putStrLn "end cmdCheck ====="
