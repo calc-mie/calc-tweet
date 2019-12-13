@@ -27,7 +27,8 @@ main = do
  botconf <- getAPIkeys
  hSetEcho stdin True
  -- message queue
- msgqueue <- newMVar PostQueue{mentions = V.empty, schedule = V.empty } :: IO (MVar PostQueue)
+ raw <- V.fromList.Prelude.map ((\x-> (V.head x, V.tail x)).V.fromList.commaSep).T.lines <$> TIO.readFile groupsconf
+ msgqueue <- newMVar PostQueue{mentions = V.empty, schedule = V.empty, pqGroups = raw } :: IO (MVar PostQueue)
  -- main
  tlmention <- (\t -> case t of Left  e -> error e
                                Right l -> (gmt_id_str.Prelude.head) l) <$> getMention (T.singleton '1') botconf

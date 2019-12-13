@@ -20,6 +20,7 @@ import qualified Data.Vector as V
 -- have to MVector
 data PostQueue = PostQueue { mentions :: V.Vector GetMention
                            , schedule :: V.Vector (T.Text, ZonedTime)-- twid, retweet time
+                           , pqGroups :: V.Vector (T.Text, V.Vector T.Text)
                            } deriving (Show)
 
 data Week = Monday
@@ -31,8 +32,8 @@ data Week = Monday
           | Sunday
           deriving (Show, Enum, Eq)
 
-data Postfunc = Postfunc { tl     :: T.Text -> T.Text -> [String] -> IO(T.Text)
-                         , dm     :: T.Text -> T.Text -> [String] -> IO(T.Text)}
+data Postfunc = Postfunc { tl       :: T.Text -> T.Text -> [String] -> IO(T.Text)
+                         , dm       :: T.Text -> T.Text -> [String] -> IO(T.Text)}
 
 --calcwebdir = "/home/share/posts/posts-available/"
 --srvcalcdir = "/srv/calc-web/posts"
@@ -45,15 +46,26 @@ groupsconf = "/usr/local/calc-tweet/groups.conf"
 emptyint = 1*1000*1000  :: Int {- 1 second -} 
 mentiont = 12*1000*1000 :: Int {-12 second -}
 
-searchReplyTree :: T.Text -> V.Vector GetTL ->  T.Text -- create all message
-searchReplyTree id tl = if T.null id then T.empty else 
- ((\t -> case t of Nothing -> T.empty 
-                   Just a  -> T.append (gtl_id_str a) (searchReplyTree (gtl_id_str a) tl)).V.find ((==id).rpStatus)) tl
+searchReplyTree :: GetTL -> V.Vector GetTL -> T.Text -- create all message
+searchReplyTree tl tls = if T.null id then T.empty else do
+ let oneReplys = V.filter (==(gtl_id_str id).rpStatus) tls
+ case V.null oneReplys of
+  True  -> 
+  False -> 
+ subFunc (V.singleton id) tls
+  where
+   subFunc :: V.Vector T.Text -> V.Vector GetTL -> T.Text
+   subFunc ids tls = case V.filter tls of
+    V.null    -> T.empty
+    otherwise -> do
 
-searchReplyId :: T.Text -> V.Vector GetTL -> [T.Text]
+searchReplyId :: [T.Text] -> GetTL -> [T.Text]
 searchReplyId id tl = if T.null id then [] else
  ((\t -> case t of Nothing -> []
-                   Just a  -> (gtl_id_str a):(searchReplyId (gtl_id_str a) tl)).V.find ((==id).rpStatus)) tl
+                   Just a  -> (gtl_id_str a):(searchReplyId (gtl_id_str a) tl)).V.find (or.Prelude.map (==id).rpStatus)) tl
+
+filterReplys :: GetTL -> V.Vector GetTL -> V.Vector GetTL
+filterReplys gtl all = 
 
 rpStatus :: GetTL -> T.Text
 rpStatus gtl = case gtl_in_reply_to_status_id_str gtl of
@@ -61,11 +73,14 @@ rpStatus gtl = case gtl_in_reply_to_status_id_str gtl of
  Just x  -> x
 
 getTweetId :: PostQueue -> T.Text
-getTweetId msg = T.pack $ (((show :: Integer -> String).(+(-1)).(read :: String -> Integer).T.unpack.scrapingId) (filterCmd msg 3))
+getTweetId msg = (T.pack.(show :: Integer -> String).(+(-1)).(read :: String -> Integer).T.unpack.snd.T.breakOnEnd (T.singleton '/')) (exurl msg)
+ where
+  exurl :: PostQueue -> T.Text
+  exurl = gul_expanded_url.Prelude.head.gen_urls.gmt_entities.V.head.mentions
 
-scrapingId :: T.Text -> T.Text
-scrapingId text = if T.null text then T.empty else 
-                  if T.head text == '/' then (scrapingId.T.tail) text else T.append ((T.singleton.T.head) text) ((scrapingId.T.tail) text)
+--scrapingId :: T.Text -> T.Text
+--scrapingId text = if T.null text then T.empty else 
+--                  if T.head text == '/' then (scrapingId.T.tail) text else T.append ((T.singleton.T.head) text) ((scrapingId.T.tail) text)
 
 rmDup :: [T.Text] -> [T.Text]
 rmDup = foldl (\seen x -> if x `elem` seen then seen else x:seen) []
@@ -115,85 +130,66 @@ commaIns = T.intercalate (T.singleton ',')
 
 strToBool str = if str == T.pack "True" then True else False
 
-groupAndUsers :: T.Text -> IO (T.Text, V.Vector T.Text)
-groupAndUsers group = do
- h <- openFile groupsconf ReadMode
- all <- V.fromList.Prelude.map (V.fromList.commaSep).T.lines.TLazy.toStrict <$> DTLIO.hGetContents h
- hClose h
- case V.find ((==group).V.head) $ all of
-  Nothing -> return $ (T.empty, V.empty)
-  Just gr -> return $ (V.head gr, V.tail gr)
+groupAndUsers :: T.Text -> V.Vector (T.Text, V.Vector T.Text) -> (T.Text, V.Vector T.Text)
+groupAndUsers group raw = do
+--  all <- V.fromList.Prelude.map (V.fromList.commaSep).T.lines.TLazy.toStrict <$> DTLIO.hGetContents h
+ case V.find ((==group).fst) $ raw of
+  Nothing -> (T.empty, V.empty)
+  Just gr -> gr
 
-userInGroup :: T.Text -> IO (V.Vector T.Text)
-userInGroup group = groupAndUsers group >>= return.snd
+userInGroup :: T.Text -> V.Vector (T.Text, V.Vector T.Text) -> (V.Vector T.Text)
+userInGroup group raw = snd $ groupAndUsers group raw
 
-allUsers :: IO (V.Vector T.Text)
-allUsers = userInGroup $ T.pack "all"
+allUsers :: V.Vector (T.Text, V.Vector T.Text) -> V.Vector T.Text
+allUsers = userInGroup (T.pack "all")
 -- TIO.readFile groupsconf >>= return.V.fromList.L.nub.Prelude.concat.Prelude.map (Prelude.tail.commaSep).T.lines
 
-existInGroup :: T.Text -> T.Text -> IO Bool
-existInGroup user group = do
- us <- userInGroup group
+existInGroup :: T.Text -> T.Text -> V.Vector (T.Text, V.Vector T.Text) -> Bool
+existInGroup user group raw = do
+ let us = userInGroup group raw 
  case V.find (== user) us of
-  Nothing -> return False
-  Just u  -> return True
+  Nothing -> False
+  Just u  -> True
 
-existUser :: T.Text -> IO Bool
-existUser user = do
- all <- allUsers
+existUser :: T.Text -> V.Vector (T.Text, V.Vector T.Text) -> Bool
+existUser user raw = do
+ let all = allUsers raw
  case V.find (== user) all of
-  Nothing -> return False
-  Just u  -> return True
+  Nothing -> False
+  Just u  -> True
 
-addUserInGroup :: T.Text -> T.Text -> IO ()
-addUserInGroup user group = do
- h <- openFile groupsconf ReadWriteMode
- raw <- Prelude.map commaSep.T.lines.TLazy.toStrict <$> DTLIO.hGetContents h
- case L.find ((==group).Prelude.head) raw of
-  Nothing -> hClose h
-  Just a  -> TIO.hPutStrLn h ((T.unlines.Prelude.map commaIns) (appendUser user group raw)) >> hClose h
-   where
-    appendUser :: T.Text -> T.Text -> [[T.Text]] -> [[T.Text]]
-    appendUser us gr []     = []
-    appendUser us gr (r:rs) = case (((==gr).Prelude.head) r,L.find (==us) (Prelude.tail r)) of
-     (True, Nothing) -> ((Prelude.head r):user:(Prelude.tail r)):appendUser us gr rs
-     otherwise       -> r:appendUser us gr rs
- 
+addUserInGroup :: T.Text -> T.Text -> V.Vector (T.Text, V.Vector T.Text) -> V.Vector (T.Text, V.Vector T.Text)
+addUserInGroup user group raw = case V.elemIndex group ((V.map Prelude.fst) raw) of
+ Nothing -> raw
+ Just a  -> do
+  let fraw = fst.V.splitAt a $ raw
+      mraw = snd $ raw V.! a
+      lraw = V.tail.snd.V.splitAt a $ raw
+  case V.elem user mraw of
+   True  -> raw
+   False -> fraw V.++ (V.singleton (fst (raw V.! a),V.snoc mraw user)) V.++ lraw
 
-rmUserInGroup :: T.Text -> T.Text -> IO ()
-rmUserInGroup user group = do
- h <- openFile groupsconf ReadWriteMode
- raw <- Prelude.map commaSep.T.lines.TLazy.toStrict <$> DTLIO.hGetContents h
- case L.find ((==group).Prelude.head) raw of
-  Nothing -> hClose h
-  Just a  -> TIO.hPutStrLn h ((T.unlines.Prelude.map commaIns) (removeUser user group raw)) >> hClose h
-   where
-    removeUser :: T.Text -> T.Text -> [[T.Text]] -> [[T.Text]]
-    removeUser us gr [] = []
-    removeUser us gr (r:rs) = case (((==gr).Prelude.head) r,L.find (==us) (Prelude.tail r)) of
-     (True, Nothing) -> ((Prelude.head r):filter (/=us) (Prelude.tail r)):removeUser us gr rs
-     otherwise         -> r:removeUser us gr rs
+rmUserInGroup :: T.Text -> T.Text -> V.Vector (T.Text, V.Vector T.Text) -> V.Vector (T.Text, V.Vector T.Text)
+rmUserInGroup user group raw = case V.elemIndex group ((V.map Prelude.fst) raw) of
+  Nothing -> raw
+  Just a  -> do
+   let fraw = fst.V.splitAt a $ raw
+       mraw = V.filter (/=user) $ snd $ raw V.! a
+       lraw = V.tail.snd.V.splitAt a $ raw
+   fraw V.++ (V.singleton (fst (raw V.! a), mraw)) V.++ lraw
 
 queueToUser :: PostQueue -> T.Text
 queueToUser = gur_screen_name.gmt_user.V.head.mentions
 
-addGroup :: T.Text -> IO()
-addGroup group = do
- h <- openFile groupsconf ReadWriteMode
- raw <- TLazy.toStrict <$> DTLIO.hGetContents h
- DTLIO.putStrLn $ TLazy.fromStrict $ T.append raw $ T.append group (T.singleton '\n')
- hClose h
- 
+addGroup :: T.Text -> V.Vector (T.Text, V.Vector T.Text) -> V.Vector (T.Text, V.Vector T.Text)
+addGroup group raw = case V.elemIndex group ((V.map Prelude.fst) raw) of
+ Just a  -> raw
+ Nothing -> V.snoc raw (group, V.empty)
 
-deleteGroup :: T.Text -> IO()
-deleteGroup group = do
- h <- openFile groupsconf ReadWriteMode
- raw <- T.lines.TLazy.toStrict <$> DTLIO.hGetContents h
- TIO.hPutStrLn h $ subDelete group raw
- hClose h
-  where
-   subDelete :: T.Text -> [T.Text] -> T.Text
-   subDelete group raw = (T.unlines.filter (/= group)) raw
+deleteGroup :: T.Text -> V.Vector (T.Text, V.Vector T.Text) -> V.Vector (T.Text, V.Vector T.Text)
+deleteGroup group raw = case V.elemIndex group ((V.map Prelude.fst) raw) of
+ Nothing -> raw
+ Just a  -> V.filter ((/=group).fst) raw
 
 -- before refuctoring, all comment out below
 -- postTweet :: T.Text -> PostQueue -> T.Text -> [String] -> IO() 

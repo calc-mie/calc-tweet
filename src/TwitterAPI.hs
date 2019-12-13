@@ -15,6 +15,8 @@ module TwitterAPI ( GetDM (..)
                   , PostTL (..)
                   , User (..)
                   , GetMention (..)
+                  , GetEntities (..)
+                  , GetUrls (..)
                   , getDM
                   , getTL
                   , getUser
@@ -101,8 +103,16 @@ data PostTL = PostTL { ptl_id_str :: Text} deriving (Show)
 $(deriveJSON defaultOptions {fieldLabelModifier = Prelude.drop 4 } ''PostTL)
 
 --get Mention parser
+
+data GetUrls = GetUrls { gul_expanded_url :: Text } deriving(Show)
+$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 4 }  ''GetUrls)
+
+data GetEntities = GetEntities { gen_urls :: [GetUrls] } deriving (Show)
+$(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 4 }  ''GetEntities)
+
 data GetMention = GetMention { gmt_id_str :: Text
                              , gmt_text   :: Text
+                             , gmt_entities :: GetEntities
                              , gmt_user   :: User} deriving (Show)
 $(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 4 }  ''GetMention)
 
@@ -130,7 +140,7 @@ getTL botconf = do
 getUserTL :: Text -> Text -> [String] -> IO (Either String [GetTL])
 getUserTL user_id since_id botconf = do
  response <- do
-  req <- parseRequest $ "https://api.twitter.com/1.1/statuses/home_timeline.json?count=200&user_id=" ++ unpack user_id ++
+  req <- parseRequest $ "https://api.twitter.com/1.1/statuses/user_timeline.json?count=200&user_id=" ++ unpack user_id ++
                                                                                          "&since_id=" ++ unpack since_id
   httpManager req botconf
  return $ eitherDecode $ responseBody response

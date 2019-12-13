@@ -51,20 +51,22 @@ cmdCheck msgq botconf postfunc = readMVar msgq >>= \nowq -> if (V.null.mentions)
 --                  "web"   -> webCmd nowq
                     _       -> errorCmd
  putStrLn "command select"
- sc <- command nowq botconf postfunc
+ (sc, pqgroup) <- command nowq botconf postfunc
  putStrLn "commend end"
- addDeleteSchedule msgq $! sc  -- add or delete schedule 
+ addDeleteSchedule msgq sc pqgroup  -- add or delete schedule 
  putStrLn "next schedule"
  threadDelay cmdt
+ TIO.writeFile groupsconf $ T.unlines.V.toList.V.map (commaIns.V.toList.(\(x, y) -> V.cons x y)) $ pqgroup
  putStrLn "end cmdCheck ====="
  cmdCheck msgq botconf postfunc
   where
-   addDeleteSchedule q d = takeMVar q >>= \x -> putMVar q x { mentions = if (V.null.mentions) x then V.empty else  (V.tail.mentions)x
-                                                            , schedule = if V.null d then schedule x else schedule x V.++ d} 
+   addDeleteSchedule q d g = takeMVar q >>= \x -> putMVar q x { mentions = if (V.null.mentions) x then V.empty else  (V.tail.mentions)x
+                                                              , schedule = if V.null d then schedule x else schedule x V.++ d
+                                                              , pqGroups = g} 
    cmdt = 60*1000*1000 -- 1min
 
 -- tweet command 
-tweetCmd :: PostQueue -> (PostQueue -> [String] -> Postfunc -> IO (V.Vector (T.Text, ZonedTime)))
+tweetCmd :: PostQueue -> (PostQueue -> [String] -> Postfunc -> IO (V.Vector (T.Text, ZonedTime), V.Vector (T.Text, V.Vector T.Text)))
 tweetCmd msg = case T.unpack (filterCmd msg 2) of
  "post"      -> twpostCmd
  "rm"        -> twrmCmd 
@@ -73,7 +75,7 @@ tweetCmd msg = case T.unpack (filterCmd msg 2) of
  _           -> twgroupCmd
 
 -- user command
-userCmd :: PostQueue -> (PostQueue -> [String] -> Postfunc -> IO (V.Vector (T.Text, ZonedTime)))
+userCmd :: PostQueue -> (PostQueue -> [String] -> Postfunc -> IO (V.Vector (T.Text, ZonedTime), V.Vector (T.Text, V.Vector T.Text)))
 userCmd msg = case T.unpack (filterCmd msg 2) of
  "add"  -> uaddCmd
  "rm"   -> urmCmd 
@@ -86,7 +88,7 @@ userCmd msg = case T.unpack (filterCmd msg 2) of
 --webCmd :: MVar PostQueue -> [String] -> IO (V.Vector (T.Text, ZonedTime)) -- post web
 --webCmd msg botconf postdata = calcWebPost postdata msg botconf typeTL
 
-groupCmd :: PostQueue -> (PostQueue -> [String] -> Postfunc -> IO (V.Vector (T.Text, ZonedTime)))
+groupCmd :: PostQueue -> (PostQueue -> [String] -> Postfunc -> IO (V.Vector (T.Text, ZonedTime), V.Vector (T.Text, V.Vector T.Text)))
 groupCmd msg = case T.unpack (filterCmd msg 2) of
  "create" -> gcreateCmd
  "add"    -> gaddCmd
