@@ -29,7 +29,7 @@ main = do
  msgqueue <- newMVar PostQueue{mentions = V.empty, schedule = V.empty, pqGroups = raw} :: IO (MVar PostQueue)
  -- main
  tlmention <- (\t -> case t of Left  e -> error e
-                               Right l -> (gmt_id_str.Prelude.head) l) <$> getMention T.empty botconf
+                               Right l -> (gmt_id_str.Prelude.head) l) <$> getMention (T.singleton '1') botconf
  monitoring msgqueue tlmention botconf (Postfunc { tl = showTL, dm = showDM })
 
 showTL :: T.Text -> T.Text -> [String] -> IO(T.Text)

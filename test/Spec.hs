@@ -36,10 +36,10 @@ main = do
 
 showTL :: T.Text -> T.Text -> [String] -> IO(T.Text)
 showTL msg id conf = do
+ putStrLn "======= test showTL ========"
  print msg
- putStrLn ""
  print id 
- putStrLn ""
+ putStrLn "======= end showTL =========="
  return T.empty
 
 showDM = showTL

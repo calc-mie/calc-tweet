@@ -35,6 +35,14 @@ data Week = Monday
 data Postfunc = Postfunc { tl       :: T.Text -> T.Text -> [String] -> IO(T.Text)
                          , dm       :: T.Text -> T.Text -> [String] -> IO(T.Text)}
 
+getUserAllNULL = User { gur_id_str = T.empty
+                      , gur_screen_name = T.empty}
+
+getTLAllNULL = GetTL { gtl_text = T.empty
+                     , gtl_id_str = T.empty
+                     , gtl_in_reply_to_status_id_str = Nothing
+                     , gtl_user = getUserAllNULL }
+ 
 --calcwebdir = "/home/share/posts/posts-available/"
 --srvcalcdir = "/srv/calc-web/posts"
 --reminddir = "/usr/local/calc-tweet/reminder/"
@@ -47,36 +55,36 @@ emptyint = 1*1000*1000  :: Int {- 1 second -}
 mentiont = 12*1000*1000 :: Int {-12 second -}
 
 searchReplyTree :: GetTL -> V.Vector GetTL -> T.Text -- create all message
-searchReplyTree tl tls = if T.null id then T.empty else do
- let oneReplys = V.filter (==(gtl_id_str id).rpStatus) tls
- case V.null oneReplys of
-  True  -> 
-  False -> 
- subFunc (V.singleton id) tls
+searchReplyTree tl tls = if T.null (gtl_id_str tl) then T.empty else do
+ let replys = V.filter ((==gtl_id_str tl).rpStatus) tls
+     (seds, next) = sedsNext replys
+ T.append (restoreSeds (gtl_text tl) (V.map gtl_text seds)) $ T.append (T.singleton '\n') $ searchReplyTree next tls
   where
-   subFunc :: V.Vector T.Text -> V.Vector GetTL -> T.Text
-   subFunc ids tls = case V.filter tls of
-    V.null    -> T.empty
-    otherwise -> do
+   sedsNext :: V.Vector GetTL -> (V.Vector GetTL, GetTL)
+   sedsNext rep = case V.find (not.isEqStrText "calc-tweet".(`getTlToCmd` 0).gtl_text) rep of
+    Nothing -> (V.filter (isEqStrText "calc-tweet".(`getTlToCmd` 0).gtl_text) rep, getTLAllNULL)
+    Just a  -> (V.filter (isEqStrText "calc-tweet".(`getTlToCmd` 0).gtl_text) rep, a)
+   restoreSeds :: T.Text -> V.Vector T.Text -> T.Text
+   restoreSeds text sed = case V.null sed of
+    True  -> text
+    False -> restoreSeds (T.replace (getTlToCmd (V.head sed) 2) (getTlToCmd (V.head sed) 3) text) (V.tail sed)
 
-searchReplyId :: [T.Text] -> GetTL -> [T.Text]
+
+searchReplyId :: T.Text -> V.Vector GetTL -> [T.Text]
 searchReplyId id tl = if T.null id then [] else
  ((\t -> case t of Nothing -> []
-                   Just a  -> (gtl_id_str a):(searchReplyId (gtl_id_str a) tl)).V.find (or.Prelude.map (==id).rpStatus)) tl
-
-filterReplys :: GetTL -> V.Vector GetTL -> V.Vector GetTL
-filterReplys gtl all = 
+                   Just a  -> (gtl_id_str a):(searchReplyId (gtl_id_str a) tl)).V.find ((==id).rpStatus)) tl
 
 rpStatus :: GetTL -> T.Text
 rpStatus gtl = case gtl_in_reply_to_status_id_str gtl of
  Nothing -> T.empty
  Just x  -> x
 
+getTweetNextId :: PostQueue -> T.Text
+getTweetNextId msg = (T.pack.(show :: Integer -> String).(+(-1)).(read :: String -> Integer).T.unpack) $ getTweetId msg
+
 getTweetId :: PostQueue -> T.Text
-getTweetId msg = (T.pack.(show :: Integer -> String).(+(-1)).(read :: String -> Integer).T.unpack.snd.T.breakOnEnd (T.singleton '/')) (exurl msg)
- where
-  exurl :: PostQueue -> T.Text
-  exurl = gul_expanded_url.Prelude.head.gen_urls.gmt_entities.V.head.mentions
+getTweetId msg = (snd.T.breakOnEnd (T.singleton '/')) $ (gul_expanded_url.Prelude.head.gen_urls.gmt_entities.V.head.mentions) msg
 
 --scrapingId :: T.Text -> T.Text
 --scrapingId text = if T.null text then T.empty else 
@@ -86,6 +94,8 @@ rmDup :: [T.Text] -> [T.Text]
 rmDup = foldl (\seen x -> if x `elem` seen then seen else x:seen) []
 
 filterCmd vmsgq n = ((!! n).Prelude.head.Prelude.map T.words.T.lines.gmt_text.V.head.mentions) vmsgq 
+
+getTlToCmd msg n = ((!! n).Prelude.head.Prelude.map T.words.T.lines) msg
 
 isEqStrText :: String -> T.Text -> Bool
 isEqStrText str tx = case (Prelude.null str, T.null tx) of
