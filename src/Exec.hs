@@ -121,7 +121,7 @@ twHelpCmd msg botconf func = case existInGroup (queueToUser msg) (T.pack "all") 
 rmTweets :: PostQueue -> [T.Text] -> [String] -> IO()
 rmTweets postq twid botconf = 
  if Prelude.null twid then return () 
- else rmTweet (Prelude.head twid) botconf >>= print >> rmTweets postq (Prelude.tail twid) botconf
+ else rmTweet (Prelude.head twid) botconf >> rmTweets postq (Prelude.tail twid) botconf
 
 -- user command part
 uaddCmd :: PostQueue -> BotsAPI -> Postfunc -> IO (V.Vector (T.Text, ZonedTime), V.Vector (T.Text, V.Vector T.Text))

@@ -21,11 +21,8 @@ monitoring :: MVar PostQueue -> T.Text -> BotsAPI -> Postfunc -> IO ()
 monitoring msgq since_id botconf func = do
  threadDelay mentiont
  --(rtCheck pd >>= remindCheck typeTL)-- monitoring retweeting
- putStrLn "========================="
- print since_id
  tlmention <- (\t -> case t of Left  e -> error e
                                Right l -> (V.reverse.V.fromList) l) <$> getMention since_id (twitter botconf)
- print tlmention
  if V.null tlmention then monitoring msgq since_id botconf func
  else do
   befq <- takeMVar msgq 
@@ -43,21 +40,16 @@ monitoring msgq since_id botconf func = do
 
 cmdCheck :: MVar PostQueue -> BotsAPI -> Postfunc -> IO ()
 cmdCheck msgq botconf postfunc = readMVar msgq >>= \nowq -> if (V.null.mentions) nowq then return () else do
- putStrLn "cmdCheck ====="
  let command = case T.unpack (filterCmd nowq 1) of
                     "tweet" -> tweetCmd nowq 
                     "user"  -> userCmd nowq
                     "group" -> groupCmd nowq
 --                  "web"   -> webCmd nowq
                     _       -> errorCmd
- putStrLn "command select"
  (sc, pqgroup) <- command nowq botconf postfunc
- putStrLn "commend end"
  addDeleteSchedule msgq sc pqgroup  -- add or delete schedule 
- putStrLn "next schedule"
  threadDelay cmdt
  TIO.writeFile groupsconf $ T.unlines.V.toList.V.map (commaIns.V.toList.(\(x, y) -> V.cons x y)) $ pqgroup
- putStrLn "end cmdCheck ====="
  cmdCheck msgq botconf postfunc
   where
    addDeleteSchedule q d g = takeMVar q >>= \x -> putMVar q x { mentions = if (V.null.mentions) x then V.empty else  (V.tail.mentions)x

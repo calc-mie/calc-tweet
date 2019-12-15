@@ -46,7 +46,7 @@ getTLAllNULL = GetTL { gtl_text = T.empty
                      , gtl_in_reply_to_status_id_str = Nothing
                      , gtl_user = getUserAllNULL }
 
-botscreen_name = "flow_6852"
+botscreen_name = "calc_mie"
 helpFile = "/usr/local/calc-tweet/helps/help.txt" 
 twHelpFile = "/usr/local/calc-tweet/helps/tweet_help.txt"
 uHelpFile = "/usr/local/calc-tweet/helps/users_help.txt"
