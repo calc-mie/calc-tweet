@@ -27,7 +27,7 @@ main = do
  twbotconf <- getTwitterAPIKeys
  slackbotconf <- getSlackAPIKeys
  discordbotconf <- getDiscordAPIKeys
- let botconf = BotsAPI { twitter = twbotconf, slack = slackbotconf, discord = discordbotconf }
+ let botconf = BotsAPI { twitter = twbotconf, slack = slackbotconf , discord = Prelude.head discordbotconf}
  -- message queue
  raw <- V.fromList.Prelude.map ((\x-> (V.head x, V.tail x)).V.fromList.commaSep).T.lines <$> TIO.readFile groupsconf
  msgqueue <- newMVar PostQueue{mentions = V.empty, schedule = V.empty, pqGroups = raw} :: IO (MVar PostQueue)

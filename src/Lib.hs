@@ -33,7 +33,7 @@ data Week = Monday
 
 data BotsAPI = BotsAPI { twitter :: [String]
                        , slack   :: [String]
-                       , discord :: [String]}
+                       , discord :: String}
 
 data Postfunc = Postfunc { tl       :: T.Text -> T.Text -> [String] -> IO(T.Text)
                          , dm       :: T.Text -> T.Text -> [String] -> IO(T.Text)}

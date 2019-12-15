@@ -24,12 +24,18 @@ getDiscordAPIKeys :: IO [String]
 getDiscordAPIKeys = do
  hSetEcho stdin False
  System.IO.putStrLn "======  discord key ======"
- apis <- getAPIkeys ["Token :", "ChannelID :"]
+ apis <- getAPIkeys ["Webhook URL :"]
  hSetEcho stdin True
  return apis
 
-sendMessageDiscord :: T.Text -> [String] -> IO ()
-sendMessageDiscord content conf = return ()
+-- use webhook
+sendMessageDiscord :: T.Text -> String -> IO ()
+sendMessageDiscord content conf = do
+ req <- parseRequest conf
+ let postReq = urlEncodedBody [("content", encodeUtf8 content)] req
+ manager <- newManager tlsManagerSettings
+ Network.HTTP.Conduit.httpLbs postReq manager
+ return ()
 -- let message = MessageCreateEvent {}
  
 -- let (channel, token) = (\[a, b] -> (a,b)) conf
