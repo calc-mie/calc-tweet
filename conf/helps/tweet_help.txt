@@ -1,0 +1,6 @@
+Usage :: calc-tweet tweet
+ calc-tweet tweet post <url> @<bot`s screen_name> ... post tweets instead of you
+ calc-tweet tweet rm <url> @<bot`s screen_name> ... remove bot`s tweet
+ calc-tweet tweet show <url> @<bot`s screen_name> ... precheck tweets
+ calc-tweet tweet <group name> <url> @<bot`s screen_name> ... post tweets with mention
+ calc-tweet tweet help @<bot`s screen_name> ... show this manual on direct message

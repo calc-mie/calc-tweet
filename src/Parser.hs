@@ -71,7 +71,7 @@ tweetCmd msg = case T.unpack (filterCmd msg 2) of
  "post"      -> twpostCmd
  "rm"        -> twrmCmd 
  "help"      -> twHelpCmd
- --"show"      -> twShowCmd
+ "show"      -> twshowCmd
  _           -> twgroupCmd
 
 -- user command
@@ -79,9 +79,8 @@ userCmd :: PostQueue -> (PostQueue -> [String] -> Postfunc -> IO (V.Vector (T.Te
 userCmd msg = case T.unpack (filterCmd msg 2) of
  "add"  -> uaddCmd
  "rm"   -> urmCmd 
--- "set"  -> usetCmd
  "help" -> uhelpCmd
--- "show" -> ushowCmd
+ "show" -> ushowCmd
  _      -> errorCmd
 
 -- web command comming soon?
@@ -94,7 +93,7 @@ groupCmd msg = case T.unpack (filterCmd msg 2) of
  "add"    -> gaddCmd
  "rm"     -> grmCmd 
  "delete" -> gdeleteCmd
--- "show"   -> gshowCmd
+ "show"   -> gshowCmd
  "help"   -> ghelpCmd
  _        -> errorCmd
 

@@ -16,7 +16,6 @@ import qualified Data.Text.Lazy as TLazy
 import qualified Data.Text.Lazy.IO as DTLIO
 import qualified Data.Vector as V
 
-
 -- have to MVector
 data PostQueue = PostQueue { mentions :: V.Vector GetMention
                            , schedule :: V.Vector (T.Text, ZonedTime)-- twid, retweet time
@@ -42,13 +41,16 @@ getTLAllNULL = GetTL { gtl_text = T.empty
                      , gtl_id_str = T.empty
                      , gtl_in_reply_to_status_id_str = Nothing
                      , gtl_user = getUserAllNULL }
+
+botscreen_name = "flow_6852"
  
 --calcwebdir = "/home/share/posts/posts-available/"
 --srvcalcdir = "/srv/calc-web/posts"
 --reminddir = "/usr/local/calc-tweet/reminder/"
-twHelpFile = "/usr/local/calc-tweet/helps/tweet.txt"
-uHelpFile = "/usr/local/calc-tweet/helps/tweet.txt"
-gHelpFile = "/usr/local/calc-tweet/helps/tweet.txt"
+helpFile = "/usr/local/calc-tweet/helps/help.txt" 
+twHelpFile = "/usr/local/calc-tweet/helps/tweet_help.txt"
+uHelpFile = "/usr/local/calc-tweet/helps/users_help.txt"
+gHelpFile = "/usr/local/calc-tweet/helps/groups_help.txt"
 groupsconf = "/usr/local/calc-tweet/groups.conf"
 
 emptyint = 1*1000*1000  :: Int {- 1 second -} 
@@ -139,6 +141,14 @@ commaIns :: [T.Text] -> T.Text
 commaIns = T.intercalate (T.singleton ',')
 
 strToBool str = if str == T.pack "True" then True else False
+
+userInGroups :: T.Text -> V.Vector (T.Text, V.Vector T.Text) -> T.Text
+userInGroups user raw = commaIns.V.toList.V.map fst.V.filter (isInGroup user) $ raw
+ where
+  isInGroup :: T.Text -> (T.Text, V.Vector T.Text) -> Bool
+  isInGroup u g = case V.find (==u) (snd g) of
+   Nothing -> False
+   Just a  -> True
 
 groupAndUsers :: T.Text -> V.Vector (T.Text, V.Vector T.Text) -> (T.Text, V.Vector T.Text)
 groupAndUsers group raw = do
