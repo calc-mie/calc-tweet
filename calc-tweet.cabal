@@ -51,7 +51,7 @@ library
     , vector
   default-language: Haskell2010
 
-executable calc-tweet-exe
+executable calc-tweet
   main-is: Main.hs
   other-modules:
       Paths_calc_tweet
