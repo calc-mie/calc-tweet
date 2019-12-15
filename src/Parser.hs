@@ -17,14 +17,14 @@ import qualified Data.Text as T
 import qualified Data.Vector as V
 
 -- main call this function
-monitoring :: MVar PostQueue -> T.Text -> [String] -> Postfunc -> IO ()
+monitoring :: MVar PostQueue -> T.Text -> BotsAPI -> Postfunc -> IO ()
 monitoring msgq since_id botconf func = do
  threadDelay mentiont
  --(rtCheck pd >>= remindCheck typeTL)-- monitoring retweeting
  putStrLn "========================="
  print since_id
  tlmention <- (\t -> case t of Left  e -> error e
-                               Right l -> (V.reverse.V.fromList) l) <$> getMention since_id botconf
+                               Right l -> (V.reverse.V.fromList) l) <$> getMention since_id (twitter botconf)
  print tlmention
  if V.null tlmention then monitoring msgq since_id botconf func
  else do
@@ -41,7 +41,7 @@ monitoring msgq since_id botconf func = do
   filterCmdCalcTweet :: GetMention -> Bool
   filterCmdCalcTweet tw = isEqStrText "calc-tweet" ((Prelude.head.T.words.gmt_text) tw)
 
-cmdCheck :: MVar PostQueue -> [String] -> Postfunc -> IO ()
+cmdCheck :: MVar PostQueue -> BotsAPI -> Postfunc -> IO ()
 cmdCheck msgq botconf postfunc = readMVar msgq >>= \nowq -> if (V.null.mentions) nowq then return () else do
  putStrLn "cmdCheck ====="
  let command = case T.unpack (filterCmd nowq 1) of
@@ -66,7 +66,7 @@ cmdCheck msgq botconf postfunc = readMVar msgq >>= \nowq -> if (V.null.mentions)
    cmdt = 60*1000*1000 -- 1min
 
 -- tweet command 
-tweetCmd :: PostQueue -> (PostQueue -> [String] -> Postfunc -> IO (V.Vector (T.Text, ZonedTime), V.Vector (T.Text, V.Vector T.Text)))
+tweetCmd :: PostQueue -> (PostQueue -> BotsAPI -> Postfunc -> IO (V.Vector (T.Text, ZonedTime), V.Vector (T.Text, V.Vector T.Text)))
 tweetCmd msg = case T.unpack (filterCmd msg 2) of
  "post"      -> twpostCmd
  "rm"        -> twrmCmd 
@@ -75,7 +75,7 @@ tweetCmd msg = case T.unpack (filterCmd msg 2) of
  _           -> twgroupCmd
 
 -- user command
-userCmd :: PostQueue -> (PostQueue -> [String] -> Postfunc -> IO (V.Vector (T.Text, ZonedTime), V.Vector (T.Text, V.Vector T.Text)))
+userCmd :: PostQueue -> (PostQueue -> BotsAPI -> Postfunc -> IO (V.Vector (T.Text, ZonedTime), V.Vector (T.Text, V.Vector T.Text)))
 userCmd msg = case T.unpack (filterCmd msg 2) of
  "add"  -> uaddCmd
  "rm"   -> urmCmd 
@@ -87,7 +87,7 @@ userCmd msg = case T.unpack (filterCmd msg 2) of
 --webCmd :: MVar PostQueue -> [String] -> IO (V.Vector (T.Text, ZonedTime)) -- post web
 --webCmd msg botconf postdata = calcWebPost postdata msg botconf typeTL
 
-groupCmd :: PostQueue -> (PostQueue -> [String] -> Postfunc -> IO (V.Vector (T.Text, ZonedTime), V.Vector (T.Text, V.Vector T.Text)))
+groupCmd :: PostQueue -> (PostQueue -> BotsAPI -> Postfunc -> IO (V.Vector (T.Text, ZonedTime), V.Vector (T.Text, V.Vector T.Text)))
 groupCmd msg = case T.unpack (filterCmd msg 2) of
  "create" -> gcreateCmd
  "add"    -> gaddCmd

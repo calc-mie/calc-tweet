@@ -1,10 +1,10 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.31.2.
+-- This file has been generated from package.yaml by hpack version 0.33.0.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: a35c85e725f91e451a37aaff88edcef74f2c04d13e27440ae407ce3ca6b9875f
+-- hash: 18489c1be2ab6d36d7cc3c9bb4806f508f116885be5b89585780004958ff2964
 
 name:           calc-tweet
 version:        0.1.0.0
@@ -27,6 +27,7 @@ source-repository head
 
 library
   exposed-modules:
+      DiscordAPI
       Exec
       Lib
       Parser

@@ -2,6 +2,7 @@ module Exec where
 
 import SlackAPI
 import TwitterAPI
+import DiscordAPI
 import Lib
 
 import Control.Exception
@@ -16,10 +17,12 @@ import qualified Data.Text as T
 import qualified Data.Vector as V
 
 -- post tweet
-postTweet :: PostQueue -> T.Text -> [String] -> (T.Text -> T.Text -> [String] -> IO(T.Text)) -> IO() 
+postTweet :: PostQueue -> T.Text -> BotsAPI -> (T.Text -> T.Text -> [String] -> IO(T.Text)) -> IO() 
 postTweet postq postTarget botconf func = if T.null postTarget then return () else do
+ postSlack postTarget $ slack botconf
+ sendMessageDiscord postTarget $ discord botconf
  let msgs = splitN postTarget 140 -- 140 is twitter max size
- start_id <- func (Prelude.head msgs) (T.empty) botconf -- Timeline
+ start_id <- func (Prelude.head msgs) (T.empty) $ twitter botconf -- Timeline
  if (not.Prelude.null.Prelude.tail) msgs then postTweetInReply (Prelude.tail msgs) start_id func else return ()
  where
   splitN :: T.Text -> Int -> [T.Text] 
@@ -27,10 +30,10 @@ postTweet postq postTarget botconf func = if T.null postTarget then return () el
   postTweetInReply :: [T.Text] -> T.Text -> (T.Text -> T.Text -> [String] -> IO(T.Text)) -> IO()
   postTweetInReply [] _ _            = return ()
   postTweetInReply (x:xs) nowid func = if T.null nowid then return () else do
-   nextid <- func x nowid botconf
+   nextid <- func x nowid $ twitter botconf
    postTweetInReply xs nextid func
 
-postDicectMessage :: PostQueue -> T.Text -> [String] -> (T.Text -> T.Text -> [String] -> IO(T.Text)) -> IO() 
+postDicectMessage :: PostQueue -> T.Text -> BotsAPI -> (T.Text -> T.Text -> [String] -> IO(T.Text)) -> IO() 
 postDicectMessage postq postTarget botconf func  = if T.null postTarget then return () else do
  let msgs    = splitN postTarget 140 -- 140 is twitter max size
      user_id = (gur_id_str.gmt_user.V.head.mentions) postq
@@ -40,44 +43,44 @@ postDicectMessage postq postTarget botconf func  = if T.null postTarget then ret
   splitN raw max = if T.length raw <= max then [raw] else (T.take max raw):splitN (T.drop max raw) max
   postTweetInReply :: [T.Text] -> T.Text -> (T.Text -> T.Text -> [String] -> IO(T.Text)) -> IO()
   postTweetInReply x uid func = if Prelude.null x then return () else do
-   func (Prelude.head x) uid botconf
+   func (Prelude.head x) uid $ twitter botconf
    postTweetInReply (Prelude.tail x) uid func
 
 -- tweet command part
-twpostCmd :: PostQueue -> [String] -> Postfunc -> IO (V.Vector (T.Text, ZonedTime), V.Vector (T.Text, V.Vector T.Text))
+twpostCmd :: PostQueue -> BotsAPI -> Postfunc -> IO (V.Vector (T.Text, ZonedTime), V.Vector (T.Text, V.Vector T.Text))
 twpostCmd msg botconf func = case existInGroup (queueToUser msg) (T.pack "post") (pqGroups msg) of
  False -> return (V.empty, pqGroups msg)
  True  -> do
   let user_id  = (gur_id_str.gmt_user.V.head.mentions) msg    -- twitter api name
       since_id = getTweetNextId msg -- twitter api name 
   userTL <- (\t -> case t of  Left e  -> error e
-                              Right l -> (V.reverse.V.fromList) l) <$> getUserTL user_id since_id botconf
+                              Right l -> (V.reverse.V.fromList) l) <$> getUserTL user_id since_id (twitter botconf)
   let firstGetTL = ((\t -> case t of Nothing -> getTLAllNULL
                                      Just t  -> t).V.find ((==(getTweetId msg)).gtl_id_str)) userTL
       postTarget = searchReplyTree firstGetTL userTL -- search and sed
   postTweet msg postTarget botconf $ tl func
   return (V.empty, pqGroups msg)
 
-twrmCmd :: PostQueue -> [String] -> Postfunc -> IO (V.Vector (T.Text, ZonedTime), V.Vector (T.Text, V.Vector T.Text))
+twrmCmd :: PostQueue -> BotsAPI -> Postfunc -> IO (V.Vector (T.Text, ZonedTime), V.Vector (T.Text, V.Vector T.Text))
 twrmCmd msg botconf func = case existInGroup (queueToUser msg) (T.pack "post") (pqGroups msg) of 
  False -> return (V.empty, pqGroups msg)
  True  -> do
   let user_id  = (gur_id_str.gmt_user.V.head.mentions) msg -- twitter api name
       since_id = getTweetId msg -- twitter api name
   userTL <- (\t -> case t of  Left e  -> error e
-                              Right l -> (V.reverse.V.fromList) l) <$> getUserTL (T.pack botscreen_name) since_id botconf
+                              Right l -> (V.reverse.V.fromList) l) <$> getUserTL (T.pack botscreen_name) since_id (twitter botconf)
   let postTarget = since_id:searchReplyId since_id userTL
-  rmTweets msg postTarget botconf
+  rmTweets msg postTarget $ twitter botconf
   return (V.empty, pqGroups msg)
 
-twgroupCmd :: PostQueue -> [String] -> Postfunc -> IO (V.Vector (T.Text, ZonedTime), V.Vector (T.Text, V.Vector T.Text))
+twgroupCmd :: PostQueue -> BotsAPI -> Postfunc -> IO (V.Vector (T.Text, ZonedTime), V.Vector (T.Text, V.Vector T.Text))
 twgroupCmd msg botconf func = case (existInGroup (queueToUser msg) (T.pack "post")) (pqGroups msg) of
  False -> return (V.empty, pqGroups msg)
  True  -> do
    let user_id  = (gur_id_str.gmt_user.V.head.mentions) msg    -- twitter api name
        since_id = getTweetNextId msg -- twitter api name
    userTL <- (\t -> case t of  Left e  -> error e
-                               Right l -> (V.reverse.V.fromList) l) <$> getUserTL user_id since_id botconf
+                               Right l -> (V.reverse.V.fromList) l) <$> getUserTL user_id since_id (twitter botconf)
    let firstGetTL = ((\t -> case t of Nothing -> getTLAllNULL
                                       Just t  -> t).V.find ((==(getTweetId msg)).gtl_id_str)) userTL
    let (group, users) = groupAndUsers (filterCmd msg 2) (pqGroups msg)
@@ -89,21 +92,21 @@ twgroupCmd msg botconf func = case (existInGroup (queueToUser msg) (T.pack "post
      replyUsers :: V.Vector T.Text -> T.Text
      replyUsers users = T.append (T.singleton '@') ((T.intercalate (T.pack " @").V.toList) users)
 
-twshowCmd :: PostQueue -> [String] -> Postfunc -> IO (V.Vector (T.Text, ZonedTime), V.Vector (T.Text, V.Vector T.Text))
+twshowCmd :: PostQueue -> BotsAPI -> Postfunc -> IO (V.Vector (T.Text, ZonedTime), V.Vector (T.Text, V.Vector T.Text))
 twshowCmd msg botconf func = case existInGroup (queueToUser msg) (T.pack "post") (pqGroups msg) of
  False -> return (V.empty, pqGroups msg)
  True  -> do
   let user_id  = (gur_id_str.gmt_user.V.head.mentions) msg    -- twitter api name
       since_id = getTweetNextId msg -- twitter api name 
   userTL <- (\t -> case t of  Left e  -> error e
-                              Right l -> (V.reverse.V.fromList) l) <$> getUserTL user_id since_id botconf
+                              Right l -> (V.reverse.V.fromList) l) <$> getUserTL user_id since_id (twitter botconf)
   let firstGetTL = ((\t -> case t of Nothing -> getTLAllNULL
                                      Just t  -> t).V.find ((==(getTweetId msg)).gtl_id_str)) userTL
       postTarget = searchReplyTree firstGetTL userTL -- search and sed
   postDicectMessage msg postTarget botconf $ dm func
   return (V.empty, pqGroups msg)
 
-twHelpCmd :: PostQueue -> [String] -> Postfunc -> IO (V.Vector (T.Text, ZonedTime), V.Vector (T.Text, V.Vector T.Text))
+twHelpCmd :: PostQueue -> BotsAPI -> Postfunc -> IO (V.Vector (T.Text, ZonedTime), V.Vector (T.Text, V.Vector T.Text))
 twHelpCmd msg botconf func = case existInGroup (queueToUser msg) (T.pack "all") (pqGroups msg) of
  False -> return (V.empty, pqGroups msg)
  True  -> do
@@ -121,7 +124,7 @@ rmTweets postq twid botconf =
  else rmTweet (Prelude.head twid) botconf >>= print >> rmTweets postq (Prelude.tail twid) botconf
 
 -- user command part
-uaddCmd :: PostQueue -> [String] -> Postfunc -> IO (V.Vector (T.Text, ZonedTime), V.Vector (T.Text, V.Vector T.Text))
+uaddCmd :: PostQueue -> BotsAPI -> Postfunc -> IO (V.Vector (T.Text, ZonedTime), V.Vector (T.Text, V.Vector T.Text))
 uaddCmd msg botconf func = case existInGroup (queueToUser msg) (T.pack "sudo") (pqGroups msg) of
  False -> return (V.empty, pqGroups msg)
  True  -> do
@@ -131,7 +134,7 @@ uaddCmd msg botconf func = case existInGroup (queueToUser msg) (T.pack "sudo") (
 --  postDicectMessage msg postTarget botconf $ dm func
   return (V.empty, addUserInGroup adduser (T.pack "all") (pqGroups msg))
 
-urmCmd :: PostQueue -> [String] -> Postfunc -> IO (V.Vector (T.Text, ZonedTime), V.Vector (T.Text, V.Vector T.Text))
+urmCmd :: PostQueue -> BotsAPI -> Postfunc -> IO (V.Vector (T.Text, ZonedTime), V.Vector (T.Text, V.Vector T.Text))
 urmCmd msg botconf func = case existInGroup (queueToUser msg) (T.pack "sudo") (pqGroups msg) of
  False -> return (V.empty, pqGroups msg)
  True  -> do
@@ -141,7 +144,7 @@ urmCmd msg botconf func = case existInGroup (queueToUser msg) (T.pack "sudo") (p
 --  postDicectMessage msg postTarget botconf $ dm func
   return (V.empty, rmUserInGroup rmuser (T.pack "all") (pqGroups msg))
   
-uhelpCmd :: PostQueue -> [String] -> Postfunc -> IO (V.Vector (T.Text, ZonedTime), V.Vector (T.Text, V.Vector T.Text))
+uhelpCmd :: PostQueue -> BotsAPI -> Postfunc -> IO (V.Vector (T.Text, ZonedTime), V.Vector (T.Text, V.Vector T.Text))
 uhelpCmd msg botconf func = case existInGroup (queueToUser msg) (T.pack "all") (pqGroups msg) of
  False -> return (V.empty, pqGroups msg)
  True  -> do
@@ -150,7 +153,7 @@ uhelpCmd msg botconf func = case existInGroup (queueToUser msg) (T.pack "all") (
   postDicectMessage msg postTarget botconf $ dm func 
   return (V.empty, pqGroups msg)
 
-ushowCmd :: PostQueue -> [String] -> Postfunc -> IO (V.Vector (T.Text, ZonedTime), V.Vector (T.Text, V.Vector T.Text))
+ushowCmd :: PostQueue -> BotsAPI -> Postfunc -> IO (V.Vector (T.Text, ZonedTime), V.Vector (T.Text, V.Vector T.Text))
 ushowCmd msg botconf func = case existInGroup (queueToUser msg) (T.pack "all") (pqGroups msg) of
  False -> return (V.empty, pqGroups msg)
  True  -> do
@@ -164,13 +167,13 @@ ushowCmd msg botconf func = case existInGroup (queueToUser msg) (T.pack "all") (
 
 -- group command part
 -- calc-tweet group create name
-gcreateCmd :: PostQueue -> [String] -> Postfunc -> IO (V.Vector (T.Text, ZonedTime), V.Vector (T.Text, V.Vector T.Text))
+gcreateCmd :: PostQueue -> BotsAPI -> Postfunc -> IO (V.Vector (T.Text, ZonedTime), V.Vector (T.Text, V.Vector T.Text))
 gcreateCmd msg botconf func = case existInGroup (queueToUser msg) (T.pack "sudo") (pqGroups msg) of
  False -> return (V.empty, pqGroups msg)
  True  -> return (V.empty, addGroup (filterCmd msg 3) (pqGroups msg))
 
 -- calc-tweet group add group user
-gaddCmd :: PostQueue -> [String] -> Postfunc -> IO (V.Vector (T.Text, ZonedTime), V.Vector (T.Text, V.Vector T.Text))
+gaddCmd :: PostQueue -> BotsAPI -> Postfunc -> IO (V.Vector (T.Text, ZonedTime), V.Vector (T.Text, V.Vector T.Text))
 gaddCmd msg botconf func = case (or.map (\x -> existInGroup (queueToUser msg) x (pqGroups msg))) [T.pack "sudo",filterCmd msg 3] of
  False -> return (V.empty, pqGroups msg)
  True  -> do
@@ -179,7 +182,7 @@ gaddCmd msg botconf func = case (or.map (\x -> existInGroup (queueToUser msg) x 
   return (V.empty, addUserInGroup addUser group (pqGroups msg))
 
 -- calc-tweet group rm group user
-grmCmd :: PostQueue -> [String] -> Postfunc -> IO (V.Vector (T.Text, ZonedTime), V.Vector (T.Text, V.Vector T.Text))
+grmCmd :: PostQueue -> BotsAPI -> Postfunc -> IO (V.Vector (T.Text, ZonedTime), V.Vector (T.Text, V.Vector T.Text))
 grmCmd msg botconf func = case (or.map (\x -> existInGroup (queueToUser msg) x (pqGroups msg))) [T.pack "sudo",filterCmd msg 3] of 
  False -> return (V.empty, pqGroups msg)
  True  -> do
@@ -188,13 +191,13 @@ grmCmd msg botconf func = case (or.map (\x -> existInGroup (queueToUser msg) x (
   return (V.empty, rmUserInGroup rmUser group (pqGroups msg))
 
 -- calc-tweet group delete name
-gdeleteCmd :: PostQueue -> [String] -> Postfunc -> IO (V.Vector (T.Text, ZonedTime), V.Vector (T.Text, V.Vector T.Text))
+gdeleteCmd :: PostQueue -> BotsAPI -> Postfunc -> IO (V.Vector (T.Text, ZonedTime), V.Vector (T.Text, V.Vector T.Text))
 gdeleteCmd msg botconf func = case existInGroup (queueToUser msg) (T.pack "sudo") (pqGroups msg) of
  False -> return (V.empty, pqGroups msg)
  True  -> return (V.empty, deleteGroup (filterCmd msg 3) (pqGroups msg))
 
 -- calc-tweet group show name post DM 
-gshowCmd :: PostQueue -> [String] -> Postfunc -> IO (V.Vector (T.Text, ZonedTime), V.Vector (T.Text, V.Vector T.Text))
+gshowCmd :: PostQueue -> BotsAPI -> Postfunc -> IO (V.Vector (T.Text, ZonedTime), V.Vector (T.Text, V.Vector T.Text))
 gshowCmd msg botconf func = case existInGroup (queueToUser msg) (filterCmd msg 3) (pqGroups msg) of
  False -> return (V.empty, pqGroups msg)
  True  -> do
@@ -205,7 +208,7 @@ gshowCmd msg botconf func = case existInGroup (queueToUser msg) (filterCmd msg 3
   return (V.empty, pqGroups msg)
 
 -- calc-tweet group help
-ghelpCmd :: PostQueue -> [String] -> Postfunc -> IO (V.Vector (T.Text, ZonedTime), V.Vector (T.Text, V.Vector T.Text))
+ghelpCmd :: PostQueue -> BotsAPI -> Postfunc -> IO (V.Vector (T.Text, ZonedTime), V.Vector (T.Text, V.Vector T.Text))
 ghelpCmd msg botconf func = case existInGroup (queueToUser msg) (T.pack "all") (pqGroups msg) of
  False -> return (V.empty, pqGroups msg)
  True  -> do
@@ -215,7 +218,7 @@ ghelpCmd msg botconf func = case existInGroup (queueToUser msg) (T.pack "all") (
   return (V.empty, pqGroups msg)
 
 -- error command part
-errorCmd :: PostQueue -> [String] -> Postfunc -> IO (V.Vector (T.Text, ZonedTime), V.Vector (T.Text, V.Vector T.Text)) -- post error
+errorCmd :: PostQueue -> BotsAPI -> Postfunc -> IO (V.Vector (T.Text, ZonedTime), V.Vector (T.Text, V.Vector T.Text)) -- post error
 errorCmd msg botconf func = case existInGroup (queueToUser msg) (T.pack "all") (pqGroups msg) of
  False -> return (V.empty, pqGroups msg)
  True  -> do

@@ -6,6 +6,7 @@ module Main(main) where
 import Lib
 import TwitterAPI
 import SlackAPI
+import DiscordAPI
 import Parser
 import Exec
 
@@ -23,13 +24,16 @@ main = do
  -- calcweb-post
  --oldcalcweb <- getDirectoryContents srvcalcdir
  -- api key
- botconf <- getAPIkeys
+ twbotconf <- getTwitterAPIKeys
+ slackbotconf <- getSlackAPIKeys
+ discordbotconf <- getDiscordAPIKeys
+ let botconf = BotsAPI { twitter = twbotconf, slack = slackbotconf, discord = discordbotconf }
  -- message queue
  raw <- V.fromList.Prelude.map ((\x-> (V.head x, V.tail x)).V.fromList.commaSep).T.lines <$> TIO.readFile groupsconf
  msgqueue <- newMVar PostQueue{mentions = V.empty, schedule = V.empty, pqGroups = raw} :: IO (MVar PostQueue)
  -- main
  tlmention <- (\t -> case t of Left  e -> error e
-                               Right l -> (gmt_id_str.Prelude.head) l) <$> getMention (T.singleton '1') botconf
+                               Right l -> (gmt_id_str.Prelude.head) l) <$> getMention (T.singleton '1') (twitter botconf)
  monitoring msgqueue tlmention botconf (Postfunc { tl = showTL, dm = showDM })
 
 showTL :: T.Text -> T.Text -> [String] -> IO(T.Text)

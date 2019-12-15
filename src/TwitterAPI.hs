@@ -2,31 +2,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE OverloadedLists #-}
 
-module TwitterAPI ( GetDM (..)
-                  , GetMessageData (..)
-                  , GetMessageCreate (..)
-                  , GetEvents (..)
-                  , PostTarget (..)
-                  , PostDM (..)
-                  , PostMessageData (..)
-                  , PostMessageCreate (..)
-                  , PostEvent (..)
-                  , GetTL (..)
-                  , PostTL (..)
-                  , User (..)
-                  , GetMention (..)
-                  , GetEntities (..)
-                  , GetUrls (..)
-                  , getDM
-                  , getTL
-                  , getUser
-                  , getUserTL
-                  , getMention
-                  , rmTweet
-                  , postRT
-                  , postDM
-                  , tweet
-                  , getAPIkeys ) where
+module TwitterAPI  where
 
 import System.IO
 import Control.Concurrent
@@ -211,19 +187,20 @@ botuser botsparameter = do
       myCredential = newCredential (C.pack(botsparameter !! 2)) (C.pack(botsparameter !! 3))
  return (myOAuth, myCredential)
 
-getAPIkeys :: IO [String]
-getAPIkeys = do
+getTwitterAPIKeys :: IO [String]
+getTwitterAPIKeys = do
  hSetEcho stdin False
- apis <- subGetAPI ["API key :", "API secret key :", "Access token :", "Access token secret :"]
+ System.IO.putStrLn "====== twitter api key ======"
+ apis <- getAPIkeys ["API key :", "API secret key :", "Access token :", "Access token secret :"]
  hSetEcho stdin True
  return apis
- where
-  subGetAPI :: [String] -> IO[String]
-  subGetAPI [] = return []
-  subGetAPI (m:messages) = do
-   Prelude.putStr m 
-   hFlush stdout
-   api <- Prelude.getLine 
-   Prelude.putChar '\n'
-   subGetAPI messages >>= (\res -> return (api:res))
+
+getAPIkeys :: [String] -> IO [String]
+getAPIkeys [] = return []
+getAPIkeys (m:messages) = do
+ Prelude.putStr m 
+ hFlush stdout
+ api <- Prelude.getLine 
+ Prelude.putChar '\n'
+ getAPIkeys messages >>= (\res -> return (api:res))
 
