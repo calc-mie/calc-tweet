@@ -45,6 +45,7 @@ cmdCheck msgq botconf postfunc = readMVar msgq >>= \nowq -> if (V.null.mentions)
                     "user"  -> userCmd nowq
                     "group" -> groupCmd nowq
 --                  "web"   -> webCmd nowq
+                    "help"  -> allhelpCmd
                     _       -> errorCmd
  (sc, pqgroup) <- command nowq botconf postfunc
  addDeleteSchedule msgq sc pqgroup  -- add or delete schedule 

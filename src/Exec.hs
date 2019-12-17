@@ -225,3 +225,18 @@ errorCmd msg botconf func = case existInGroup (queueToUser msg) (T.pack "all") (
   let postTarget = T.pack "command error..."
   postDicectMessage msg postTarget botconf $ dm func
   return (V.empty, pqGroups msg)
+
+-- help command part
+
+allhelpCmd :: PostQueue -> BotsAPI -> Postfunc -> IO (V.Vector  (T.Text, ZonedTime), V.Vector (T.Text, V.Vector T.Text))
+allhelpCmd msg botconf func = case existInGroup (queueToUser msg) (T.pack "all") (pqGroups msg) of
+ False -> return (V.empty, pqGroups msg)
+ True  -> do
+  let user_id    = (gur_id_str.gmt_user.V.head.mentions) msg
+  helps <- TIO.readFile helpFile
+  twhelp <- TIO.readFile twHelpFile
+  uhelp <- TIO.readFile uHelpFile
+  ghelp <- TIO.readFile gHelpFile
+  let postTarget = T.append helps $ T.append twhelp $ T.append uhelp ghelp
+  postDicectMessage msg postTarget botconf $ dm func 
+  return (V.empty, pqGroups msg) 
