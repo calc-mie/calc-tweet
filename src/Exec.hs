@@ -37,10 +37,11 @@ postDicectMessage :: PostQueue -> T.Text -> BotsAPI -> (T.Text -> T.Text -> [Str
 postDicectMessage postq postTarget botconf func  = if T.null postTarget then return () else do
  let msgs    = splitN postTarget 140 -- 140 is twitter max size
      user_id = (gur_id_str.gmt_user.V.head.mentions) postq
- if (not.Prelude.null) msgs then postTweetInReply msgs user_id func else return ()
+ func msgs user_id $ twitter botconf
+ return ()
  where
-  splitN :: T.Text -> Int -> [T.Text] 
-  splitN raw max = if T.length raw <= max then [raw] else (T.take max raw):splitN (T.drop max raw) max
+  splitN :: T.Text -> Int -> T.Text
+  splitN raw max = if T.length raw <= max then raw else T.append (T.take max raw) $ T.append (T.singleton '\n') (splitN (T.drop max raw) max)
   postTweetInReply :: [T.Text] -> T.Text -> (T.Text -> T.Text -> [String] -> IO(T.Text)) -> IO()
   postTweetInReply x uid func = if Prelude.null x then return () else do
    func (Prelude.head x) uid $ twitter botconf
