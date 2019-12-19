@@ -71,7 +71,6 @@ searchReplyTree tl tls = if T.null (gtl_id_str tl) then T.empty else do
     True  -> text
     False -> restoreSeds (T.replace (getTlToCmd (V.head sed) 2) (getTlToCmd (V.head sed) 3) text) (V.tail sed)
 
-
 searchReplyId :: T.Text -> V.Vector GetTL -> [T.Text]
 searchReplyId id tl = if T.null id then [] else
  ((\t -> case t of Nothing -> []
@@ -90,6 +89,24 @@ getTweetId msg = (snd.T.breakOnEnd (T.singleton '/')) $ (gul_expanded_url.Prelud
 
 rmDup :: [T.Text] -> [T.Text]
 rmDup = foldl (\seen x -> if x `elem` seen then seen else x:seen) []
+
+vectRmDup :: V.Vector T.Text -> V.Vector T.Text
+vectRmDup = V.foldl (\seen x -> if x `V.elem` seen then seen else V.cons x seen) V.empty
+
+splitGroupUsers :: [T.Text] -> (T.Text, V.Vector T.Text)
+splitGroupUsers = (\(a,b) -> (a, (V.fromList.rmDup) b)).(`ssgu` (T.empty, []))
+ where
+  ssgu :: [T.Text] -> (T.Text, [T.Text]) -> (T.Text, [T.Text]) -- split select group users, O(n)
+  ssgu []     (group, users) = (group, users)
+  ssgu (x:xs) (group, users) = if '@' == (T.head x) then (group, (T.tail x):users) else (x, users)
+
+gtlToVector :: Either String [GetTL] -> V.Vector GetTL
+gtlToVector gtl = (\a -> case a of Left e  -> V.empty
+                                   Right r -> (V.reverse.V.fromList) r) gtl
+
+getFirstGtl :: T.Text -> V.Vector GetTL -> GetTL
+getFirstGtl twid gtl = ((\a -> (case a of Nothing -> getTLAllNULL
+                                          Just t  -> t)).V.find ((==twid).gtl_id_str)) gtl
 
 filterCmd vmsgq n = ((!! n).Prelude.head.Prelude.map T.words.T.lines.gmt_text.V.head.mentions) vmsgq 
 
@@ -112,8 +129,9 @@ commaIns = T.intercalate (T.singleton ',')
 
 strToBool str = if str == T.pack "True" then True else False
 
-userInGroups :: T.Text -> V.Vector (T.Text, V.Vector T.Text) -> T.Text
-userInGroups user raw = commaIns.V.toList.V.map fst.V.filter (isInGroup user) $ raw
+-- return group
+groupInUser :: T.Text -> V.Vector (T.Text, V.Vector T.Text) -> T.Text
+groupInUser user raw = commaIns.V.toList.V.map fst.V.filter (isInGroup user) $ raw
  where
   isInGroup :: T.Text -> (T.Text, V.Vector T.Text) -> Bool
   isInGroup u g = case V.find (==u) (snd g) of
@@ -126,11 +144,9 @@ groupAndUsers group raw = do
   Nothing -> (T.empty, V.empty)
   Just gr -> gr
 
+-- return user
 userInGroup :: T.Text -> V.Vector (T.Text, V.Vector T.Text) -> (V.Vector T.Text)
 userInGroup group raw = snd $ groupAndUsers group raw
-
-allUsers :: V.Vector (T.Text, V.Vector T.Text) -> V.Vector T.Text
-allUsers = userInGroup (T.pack "all")
 
 existInGroup :: T.Text -> T.Text -> V.Vector (T.Text, V.Vector T.Text) -> Bool
 existInGroup user group raw = do
@@ -140,11 +156,7 @@ existInGroup user group raw = do
   Just u  -> True
 
 existUser :: T.Text -> V.Vector (T.Text, V.Vector T.Text) -> Bool
-existUser user raw = do
- let all = allUsers raw
- case V.find (== user) all of
-  Nothing -> False
-  Just u  -> True
+existUser user raw = (V.or.V.map (V.elem user).(V.map snd)) raw
 
 addUserInGroup :: T.Text -> T.Text -> V.Vector (T.Text, V.Vector T.Text) -> V.Vector (T.Text, V.Vector T.Text)
 addUserInGroup user group raw = case V.elemIndex group ((V.map Prelude.fst) raw) of
