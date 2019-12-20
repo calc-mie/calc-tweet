@@ -37,49 +37,45 @@ postDicectMessage :: Lex -> T.Text -> BotsAPI -> (T.Text -> T.Text -> [String] -
 postDicectMessage lex postTarget botconf func  = if T.null postTarget then return () else do
  func postTarget (lex_user_id lex) $ twitter botconf
  return ()
- where
-  postTweetInReply :: [T.Text] -> T.Text -> (T.Text -> T.Text -> [String] -> IO(T.Text)) -> IO()
-  postTweetInReply x uid func = if Prelude.null x then return () else do
-   func (Prelude.head x) uid $ twitter botconf
-   postTweetInReply (Prelude.tail x) uid func
 
 -- tweet command part
-twpostCmd :: Func
-twpostCmd func lex botconf = do
- userTL <- gtlToVector <$> getUserTL (lex_user_id lex) ((beforeId.first_id) lex) (twitter botconf) -- reply だと先頭取れない? (apiみろ)
- let firstGetTL = getFirstGtl (first_id lex) userTL 
-     postTarget = searchReplyTree firstGetTL userTL -- search and sed
+twpostCmd :: Lex -> Func
+twpostCmd lex func botconf = do
+ userTL <- gtlToVector <$> getUserTL (lex_user_id lex) (first_id lex) (twitter botconf)
+ let firstGetTL = getFirstGtl ((fst.first_id) lex) userTL 
+     postTarget = (if (snd.first_id) lex then rtSearchReplyTree else repSearchReplyTree) firstGetTL userTL -- search and sed
  postTweet lex postTarget botconf $ tl func
  return (V.empty, V.empty)
 
-twrmCmd :: Func
-twrmCmd func lex botconf =  do
-  userTL <- gtlToVector <$> getUserTL (lex_user_id lex) ((beforeId.first_id) lex) (twitter botconf)
-  let postTarget = (first_id lex):searchReplyId (first_id lex) userTL
+twrmCmd :: Lex -> Func
+twrmCmd lex func botconf =  do
+  userTL <- gtlToVector <$> getUserTL (lex_user_id lex) (first_id lex) (twitter botconf)
+  let postTarget = ((fst.first_id) lex):searchReplyId ((fst.first_id) lex) userTL
   rmTweets postTarget $ twitter botconf
   return (V.empty, V.empty)
 
-twgroupCmd :: GandU -> Func
-twgroupCmd gandu func lex botconf = do
-   userTL <- gtlToVector <$> getUserTL (lex_user_id lex) ((beforeId.first_id) lex) (twitter botconf)
-   let firstGetTL = getFirstGtl (first_id lex) userTL
-       postTarget = T.append (T.append ((replyUsers.snd) gandu) (T.singleton '\n')) (searchReplyTree firstGetTL userTL)
+twgroupCmd :: GandU -> Lex -> Func
+twgroupCmd gandu lex func botconf = do
+   userTL <- gtlToVector <$> getUserTL (lex_user_id lex) (first_id lex) (twitter botconf)
+   let firstGetTL = getFirstGtl ((fst.first_id) lex) userTL
+       searchfunc = if (snd.first_id) lex then rtSearchReplyTree else repSearchReplyTree
+       postTarget = T.append (T.append ((replyUsers.snd) gandu) (T.singleton '\n')) (searchfunc firstGetTL userTL)
    postTweet lex postTarget botconf $ tl func
    return (V.empty, V.empty)
     where
      replyUsers :: V.Vector T.Text -> T.Text
      replyUsers users = T.append (T.singleton '@') ((T.intercalate (T.pack " @").V.toList) users)
 
-twshowCmd :: Func
-twshowCmd func lex botconf = do
-  userTL <- gtlToVector <$> getUserTL (lex_user_id lex) ((beforeId.first_id) lex) (twitter botconf)
-  let firstGetTL = getFirstGtl (first_id lex) userTL
-      postTarget = searchReplyTree firstGetTL userTL -- search and sed
+twshowCmd :: Lex -> Func
+twshowCmd lex func botconf = do
+  userTL <- gtlToVector <$> getUserTL (lex_user_id lex) (first_id lex) (twitter botconf)
+  let firstGetTL = getFirstGtl ((fst.first_id) lex) userTL
+      postTarget = (if (snd.first_id) lex then rtSearchReplyTree else repSearchReplyTree) firstGetTL userTL -- search and sed
   postDicectMessage lex postTarget botconf $ dm func
   return (V.empty, V.empty)
 
-twHelpCmd :: Func
-twHelpCmd func lex botconf =  do
+twHelpCmd :: Lex -> Func
+twHelpCmd lex func botconf =  do
   postTarget <- TIO.readFile twHelpFile
   postDicectMessage lex postTarget botconf $ dm func
   return (V.empty, V.empty)
@@ -95,25 +91,25 @@ rmTweets twid botconf =
 
 -- group command part
 -- calc-tweet group create name
-gcreateCmd :: V.Vector GandU -> Func
-gcreateCmd gandu func lex botconf =  return (V.empty, addGroup (group lex) gandu)
+gcreateCmd :: V.Vector GandU -> Lex -> Func
+gcreateCmd gandu lex func botconf =  return (V.empty, addGroup (group lex) gandu)
 
 -- calc-tweet group add group user
-gaddCmd :: V.Vector GandU -> Func
-gaddCmd gandu func lex botconf = return (V.empty, addUsersInGroup (users lex) (group lex) gandu)
+gaddCmd :: V.Vector GandU -> Lex -> Func
+gaddCmd gandu lex func botconf = return (V.empty, addUsersInGroup (users lex) (group lex) gandu)
 
 -- calc-tweet group rm group user
-grmCmd :: V.Vector GandU -> Func
-grmCmd gandu func lex botconf = return (V.empty, rmUsersInGroup (users lex) (group lex) gandu)
+grmCmd :: V.Vector GandU -> Lex -> Func
+grmCmd gandu lex func botconf = return (V.empty, rmUsersInGroup (users lex) (group lex) gandu)
 
 -- calc-tweet group delete name
-gdeleteCmd :: V.Vector GandU -> Func
-gdeleteCmd gandu func lex botconf = return (V.empty, deleteGroup (group lex) gandu)
+gdeleteCmd :: V.Vector GandU -> Lex -> Func
+gdeleteCmd gandu lex func botconf = return (V.empty, deleteGroup (group lex) gandu)
 
-gandushowCmd :: V.Vector GandU -> Func
-gandushowCmd gandu func lex botconf = do
- let postTarget = (if (T.null.group) lex then [] else groupInUser (group lex) gandu)  
-                  ++ (if (V.null users) lex then [] else createPostTarget (users lex) gandu)
+gandushowCmd :: V.Vector GandU -> Lex -> Func
+gandushowCmd gandu lex func botconf = do
+ let postTarget = T.append (if (T.null.group) lex then T.empty else V.foldl1 (T.append) (usersInGroup (group lex) gandu))
+                           (if (V.null.users) lex then T.empty else createPostTarget (users lex) gandu)
  postDicectMessage lex postTarget botconf $ dm func
  return (V.empty, V.empty)
   where
@@ -121,20 +117,20 @@ gandushowCmd gandu func lex botconf = do
    createPostTarget us gandu = if V.null us then T.empty else
     case existUser (V.head us) gandu of
      False -> T.pack "unjoined" 
-     True  -> T.append $ T.append (V.head us) $ T.append (T.singleton '\n') $ T.append $ groupInUser (V.head us) gandu 
-                       $ T.append (T.pack "--------------------\n") $ createPostTarget (V.tail us) gandu
+     True  -> T.append (V.head us) $ T.append (T.singleton '\n') $ T.append (groupInUser (V.head us) gandu) 
+                                   $ T.append (T.pack "--------------------\n") $ createPostTarget (V.tail us) gandu
  
 
 -- calc-tweet group help
-ghelpCmd :: V.Vector GandU -> Func
-ghelpCmd gandu func lex botconf = do
+ghelpCmd :: V.Vector GandU -> Lex -> Func
+ghelpCmd gandu lex func botconf = do
   postTarget <- TIO.readFile gHelpFile
   postDicectMessage lex postTarget botconf $ dm func 
   return (V.empty, V.empty)
 
 -- help command part
-allhelpCmd :: Func
-allhelpCmd func lex botconf = do
+allhelpCmd :: Lex -> Func
+allhelpCmd lex func botconf = do
   helps <- TIO.readFile helpFile
   twhelp <- TIO.readFile twHelpFile
 --  uhelp <- TIO.readFile uHelpFile
@@ -144,8 +140,8 @@ allhelpCmd func lex botconf = do
   return (V.empty, V.empty) 
 
 -- error command part
-errorCmd :: T.Text -> Func -- post error
-errorCmd text func lex botconf = do
+errorCmd :: T.Text -> Lex -> Func -- post error
+errorCmd text lex func botconf = do
   let postTarget = T.append (T.pack "error : ") text
   postDicectMessage lex postTarget botconf $ dm func
   return (V.empty, V.empty)

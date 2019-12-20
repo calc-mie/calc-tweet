@@ -114,11 +114,13 @@ getTL botconf = do
   httpManager req botconf
  return $ eitherDecode $ responseBody response
 
-getUserTL :: Text -> Text -> [String] -> IO (Either String [GetTL])
-getUserTL user_id since_id botconf = do
+getUserTL :: Text -> (Text, Bool) -> [String] -> IO (Either String [GetTL])
+getUserTL user_id (twid, mode) botconf = do
+ let str = if mode then "&since_id=" else "&max_id="
+ let id  = if mode then (unpack.beforeId) twid else unpack twid
  response <- do
   req <- parseRequest $ "https://api.twitter.com/1.1/statuses/user_timeline.json?count=200&user_id=" ++ unpack user_id ++
-                                                                                         "&since_id=" ++ unpack since_id
+                                                                                          str ++ id 
   httpManager req botconf
  return $ eitherDecode $ responseBody response
 
@@ -171,6 +173,12 @@ postDM tw uid botconf = do
   let postreq = setRequestBodyJSON json req
   httpManager postreq botconf
  return ()
+
+beforeId :: Text -> Text
+beforeId id = (pack.(show :: Integer -> String).(+(-1)).(read :: String -> Integer).unpack) id
+
+nextId :: Text -> Text
+nextId id = (pack.(show :: Integer -> String).(+1).(read :: String -> Integer).unpack) id
 
 httpManager :: Request -> [String] ->  IO(Response Data.ByteString.Lazy.Internal.ByteString)
 httpManager req botconf = do

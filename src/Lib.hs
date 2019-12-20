@@ -17,7 +17,7 @@ import qualified Data.Text.Lazy.IO as DTLIO
 import qualified Data.Vector as V
 
 type GandU = (T.Text, V.Vector T.Text) -- (group, users)
-type Func = Postfunc -> Lex -> BotsAPI -> IO(V.Vector (T.Text, ZonedTime), V.Vector GandU)
+type Func = Postfunc -> BotsAPI -> IO(V.Vector (T.Text, ZonedTime), V.Vector GandU)
 
 -- have to MVector
 data PostQueue = PostQueue { mentions :: V.Vector GetMention
@@ -28,7 +28,7 @@ data PostQueue = PostQueue { mentions :: V.Vector GetMention
 data Lex = Lex { subcmd          :: T.Text
                , group           :: T.Text -- :<name>
                , users           :: V.Vector T.Text -- @<name>
-               , first_id        :: T.Text -- retweet reply 
+               , first_id        :: (T.Text, Bool) -- mode :: True -> &since_id= False -> &max_id=
                , lex_screen_name :: T.Text -- who send command
                , lex_user_id     :: T.Text -- id which is sender
                } deriving (Show)
@@ -52,7 +52,7 @@ data Postfunc = Postfunc { tl       :: T.Text -> T.Text -> [String] -> IO(T.Text
 lexAllNull = Lex { subcmd = T.empty
                  , group  = T.empty
                  , users  = V.empty
-                 , first_id = T.empty
+                 , first_id = (T.empty, True)
                  , lex_screen_name = T.empty
                  , lex_user_id = T.empty }
 
@@ -81,9 +81,9 @@ mentiont = 12*1000*1000 :: Int {-12 second -}
 lexAnalyser :: GetMention -> Either T.Text Lex
 lexAnalyser gmt = case ((lexTextAnalyser.T.words.gmt_text) gmt, gmt_in_reply_to_status_id_str gmt, (gen_urls.gmt_entities) gmt) of
  (Left t, _, _ )        -> Left t
- (Right l, Nothing, [])  -> Right $ l { lex_screen_name = gmtToSN gmt, lex_user_id = gmtToUI gmt}
- (Right l, Just a, [])   -> Right $ l { first_id = a, lex_screen_name = gmtToSN gmt, lex_user_id = gmtToUI gmt}
- (Right l, Nothing, [a]) -> Right $ l { first_id = gulToTweetId a, lex_screen_name = gmtToSN gmt, lex_user_id = gmtToUI gmt}
+ (Right l, Nothing, [])  -> Right $ l {lex_screen_name = gmtToSN gmt, lex_user_id = gmtToUI gmt}
+ (Right l, Just a, [])   -> Right $ l {first_id = (a, False), lex_screen_name = gmtToSN gmt, lex_user_id = gmtToUI gmt}
+ (Right l, Nothing, [a]) -> Right $ l { first_id = (gulToTweetId a, True), lex_screen_name = gmtToSN gmt, lex_user_id = gmtToUI gmt}
  (Right l, Just a, x)    -> Left $ T.pack "double post target."
  _                       -> Left $ T.pack "....."
  where
@@ -101,21 +101,34 @@ lexAnalyser gmt = case ((lexTextAnalyser.T.words.gmt_text) gmt, gmt_in_reply_to_
   analySubcmdError first second = T.append (T.pack "double sub command selects : ") $ T.append first $ T.append (T.pack " and ") second
   gulToTweetId :: GetUrls -> T.Text
   gulToTweetId = (snd.T.breakOnEnd (T.singleton '/')).gul_expanded_url
+
+restoreSeds :: T.Text -> V.Vector T.Text -> T.Text
+restoreSeds text sed = case V.null sed of
+ True  -> text
+ False -> restoreSeds (T.replace (getTlToCmd (V.head sed) 2) (getTlToCmd (V.head sed) 3) text) (V.tail sed)
    
-searchReplyTree :: GetTL -> V.Vector GetTL -> T.Text -- create all message
-searchReplyTree tl tls = if T.null (gtl_id_str tl) then T.empty else do
+rtSearchReplyTree :: GetTL -> V.Vector GetTL -> T.Text -- create all message
+rtSearchReplyTree tl tls = if T.null (gtl_id_str tl) then T.empty else do
  let replys = V.filter ((==gtl_id_str tl).rpStatus) tls
      (seds, next) = sedsNext replys
- T.append (restoreSeds (gtl_text tl) (V.map gtl_text seds)) $ T.append (T.singleton '\n') $ searchReplyTree next tls
+ T.append (restoreSeds (gtl_text tl) (V.map gtl_text seds)) $ T.append (T.singleton '\n') $ rtSearchReplyTree next tls
   where
    sedsNext :: V.Vector GetTL -> (V.Vector GetTL, GetTL)
    sedsNext rep = case V.find (not.isEqStrText "calc-tweet".(`getTlToCmd` 0).gtl_text) rep of
     Nothing -> (V.filter (isEqStrText "calc-tweet".(`getTlToCmd` 0).gtl_text) rep, getTLAllNULL)
     Just a  -> (V.filter (isEqStrText "calc-tweet".(`getTlToCmd` 0).gtl_text) rep, a)
-   restoreSeds :: T.Text -> V.Vector T.Text -> T.Text
-   restoreSeds text sed = case V.null sed of
-    True  -> text
-    False -> restoreSeds (T.replace (getTlToCmd (V.head sed) 2) (getTlToCmd (V.head sed) 3) text) (V.tail sed)
+
+repSearchReplyTree :: GetTL -> V.Vector GetTL -> T.Text
+repSearchReplyTree tl tls = do
+ let replys = V.filter ((==(rpStatus tl)).gtl_id_str) tls
+     seds   = V.filter (\x -> check 0 x && check 1 x) replys
+ case gtl_in_reply_to_status_id_str tl of
+  Nothing -> restoreSeds (gtl_text tl) (V.map gtl_text seds)
+  Just x  -> T.append (repSearchReplyTree (statusToGl x tls) tls) $ restoreSeds (gtl_text tl) (V.map gtl_text seds)
+ where
+  check :: Int -> GetTL -> Bool 
+  check 0 = isEqStrText "calc-tweet".(`getTlToCmd` 0).gtl_text
+  check 1 = isEqStrText "sed".(`getTlToCmd` 1).gtl_text
 
 searchReplyId :: T.Text -> V.Vector GetTL -> [T.Text]
 searchReplyId id tl = if T.null id then [] else
@@ -127,13 +140,15 @@ rpStatus gtl = case gtl_in_reply_to_status_id_str gtl of
  Nothing -> T.empty
  Just x  -> x
 
+statusToGl :: T.Text -> V.Vector GetTL -> GetTL
+statusToGl id gtl = case V.find ((==id).gtl_id_str) gtl of
+ Nothing -> getTLAllNULL
+ Just x  -> x
+
 gmtToRpStatus :: GetMention -> T.Text
 gmtToRpStatus gmt = case gmt_in_reply_to_status_id_str gmt of
  Nothing -> T.empty
  Just x  -> x
-
-beforeId :: T.Text -> T.Text
-beforeId id = (T.pack.(show :: Integer -> String).(+(-1)).(read :: String -> Integer).T.unpack) id
 
 getTweetId :: GetMention -> T.Text
 getTweetId gmt = (snd.T.breakOnEnd (T.singleton '/')) $ (gul_expanded_url.Prelude.head.gen_urls.gmt_entities) gmt
@@ -196,7 +211,7 @@ groupAndUsers group raw = do
   Just gr -> gr
 
 -- return user
-usersInGroup :: T.Text -> V.Vector (T.Text, V.Vector T.Text) -> (V.Vector T.Text)
+usersInGroup :: T.Text -> V.Vector (T.Text, V.Vector T.Text) -> V.Vector T.Text
 usersInGroup group raw = snd $ groupAndUsers group raw
 
 existInGroup :: T.Text -> T.Text -> V.Vector (T.Text, V.Vector T.Text) -> Bool
