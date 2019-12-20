@@ -16,11 +16,19 @@ import qualified Data.Text.Lazy as TLazy
 import qualified Data.Text.Lazy.IO as DTLIO
 import qualified Data.Vector as V
 
+type GandU = (T.Text, V.Vector T.Text) -- (group, users)
+type Func = Postfunc -> BotsAPI -> IO(V.Vector (T.Text, ZonedTime), V.Vector GandU)
+
 -- have to MVector
 data PostQueue = PostQueue { mentions :: V.Vector GetMention
                            , schedule :: V.Vector (T.Text, ZonedTime)-- twid, retweet time
-                           , pqGroups :: V.Vector (T.Text, V.Vector T.Text)
+                           , pqGroup  :: V.Vector GandU
                            } deriving (Show)
+
+data Lex = Lex { subcmd      :: T.Text
+               , group       :: T.Text -- :<name>
+               , users       :: V.Vector T.Text -- @<name>
+               } deriving (Show)
 
 data Week = Monday
           | Tuesday
@@ -31,12 +39,17 @@ data Week = Monday
           | Sunday
           deriving (Show, Enum, Eq)
 
-data BotsAPI = BotsAPI { twitter :: [String]
-                       , slack   :: [String]
-                       , discord :: String}
+data BotsAPI = BotsAPI { twitter   :: [String]
+                       , slack     :: [String]
+                       , discord   :: String
+                       , bApiGroup :: V.Vector GandU}
 
 data Postfunc = Postfunc { tl       :: T.Text -> T.Text -> [String] -> IO(T.Text)
                          , dm       :: T.Text -> T.Text -> [String] -> IO(T.Text)}
+
+lexAllNull = Lex { subcmd = T.empty
+                 , group  = T.empty
+                 , users  = V.empty}
 
 getUserAllNULL = User { gur_id_str = T.empty
                       , gur_screen_name = T.empty}
@@ -56,6 +69,20 @@ groupsconf = "/usr/local/calc-tweet/groups.conf"
 emptyint = 1*1000*1000  :: Int {- 1 second -} 
 mentiont = 12*1000*1000 :: Int {-12 second -}
 
+lexAnalyser :: [T.Text] -> Either T.Text Lex
+lexAnalyser []     = Right lexAllNull
+lexAnalyser (x:xs) = case lexAnalyser xs of
+ Left  err -> Left err
+ Right lan -> case T.head x of
+  ':' -> if (T.null.group) lan then Right lan { group = x } else Left $ analyGroupsError x (group lan)
+  '@' -> Right lan { users =  V.cons x (users lan) }
+  _   -> if (T.null.subcmd) lan then Right lan { subcmd = x } else Left $ analySubcmdError x (subcmd lan)
+ where
+  analyGroupsError :: T.Text -> T.Text -> T.Text
+  analyGroupsError first second = T.append (T.pack "double groups selects : ") $  T.append first $ T.append (T.pack " and ") second
+  analySubcmdError :: T.Text -> T.Text -> T.Text
+  analySubcmdError first second = T.append (T.pack "double sub command selects : ") $ T.append first $ T.append (T.pack " and ") second
+   
 searchReplyTree :: GetTL -> V.Vector GetTL -> T.Text -- create all message
 searchReplyTree tl tls = if T.null (gtl_id_str tl) then T.empty else do
  let replys = V.filter ((==gtl_id_str tl).rpStatus) tls
@@ -81,11 +108,16 @@ rpStatus gtl = case gtl_in_reply_to_status_id_str gtl of
  Nothing -> T.empty
  Just x  -> x
 
-getTweetNextId :: PostQueue -> T.Text
-getTweetNextId msg = (T.pack.(show :: Integer -> String).(+(-1)).(read :: String -> Integer).T.unpack) $ getTweetId msg
+gmtToRpStatus :: GetMention -> T.Text
+gmtToRpStatus gmt = case gmt_in_reply_to_status_id_str gmt of
+ Nothing -> T.empty
+ Just x  -> x
 
-getTweetId :: PostQueue -> T.Text
-getTweetId msg = (snd.T.breakOnEnd (T.singleton '/')) $ (gul_expanded_url.Prelude.head.gen_urls.gmt_entities.V.head.mentions) msg
+getTweetBefId :: T.Text -> T.Text
+getTweetBefId id = (T.pack.(show :: Integer -> String).(+(-1)).(read :: String -> Integer).T.unpack) id
+
+getTweetId :: GetMention -> T.Text
+getTweetId gmt = (snd.T.breakOnEnd (T.singleton '/')) $ (gul_expanded_url.Prelude.head.gen_urls.gmt_entities) gmt
 
 rmDup :: [T.Text] -> [T.Text]
 rmDup = foldl (\seen x -> if x `elem` seen then seen else x:seen) []
@@ -180,6 +212,12 @@ rmUserInGroup user group raw = case V.elemIndex group ((V.map Prelude.fst) raw) 
 
 queueToUser :: PostQueue -> T.Text
 queueToUser = gur_screen_name.gmt_user.V.head.mentions
+
+gmtToSN :: GetMention -> T.Text
+gmtToSN = gur_screen_name.gmt_user
+
+gmtToUI :: GetMention -> T.Text
+gmtToUI = gur_id_str.gmt_user
 
 addGroup :: T.Text -> V.Vector (T.Text, V.Vector T.Text) -> V.Vector (T.Text, V.Vector T.Text)
 addGroup group raw = case V.elemIndex group ((V.map Prelude.fst) raw) of

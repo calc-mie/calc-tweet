@@ -22,12 +22,13 @@ monitoring func msgq since_id botconf = do
  threadDelay mentiont
  tlmention <- gmtToVector <$> getMention since_id (twitter botconf)
  if V.null tlmention then monitoring func msgq since_id botconf else do
+  let queues = V.filter (\x -> existUser (gmtToSN x) (bApiGroup botconf)) tlmention
   befq <- takeMVar msgq  -- get and stop other threads
   (if (V.null.mentions) befq then do
-    putMVar msgq befq {mentions = V.filter filterCmdCalcTweet tlmention} -- start thread 
+    putMVar msgq befq {mentions = queues} -- start thread 
     forkIO $ cmdCheck func msgq botconf -- create thread
     return ()
-   else putMVar msgq befq{mentions = ((mentions befq) V.++ (V.filter filterCmdCalcTweet tlmention))}) -- start thread
+   else putMVar msgq befq{mentions = ((mentions befq) V.++ queues}) -- start thread
   >> monitoring func msgq ((gmt_id_str.V.head) tlmention) botconf
  where
   filterCmdCalcTweet :: GetMention -> Bool
@@ -37,54 +38,61 @@ monitoring func msgq since_id botconf = do
                                   Right r -> (V.reverse.V.fromList) r
 
 cmdCheck :: Postfunc -> MVar PostQueue -> BotsAPI -> IO ()
-cmdCheck postfunc msgq botconf = readMVar msgq >>= \nowq -> if (V.null.mentions) nowq then return () else do
- let command = case T.unpack (filterCmd nowq 1) of
-                    "tweet" -> tweetCmd nowq 
---                  "user"  -> userCmd nowq
-                    "group" -> groupCmd nowq
---                  "web"   -> webCmd nowq
-                    "help"  -> allhelpCmd
-                    _       -> errorCmd
- (sc, pqgroup) <- command postfunc nowq botconf
- addDeleteSchedule msgq sc pqgroup  -- add or delete schedule 
+cmdCheck postfunc msgq botconf = readMVar msgq >>= \nowq -> if (V.null.mentions) nowq then return () else do 
+ let command = ParseCmd ((V.head.mentions) nowq) (pqGroup nowq)
+ (sc, group) <- command postfunc botconf
+ addDeleteSchedule msgq sc -- add or delete schedule 
  threadDelay cmdt
- TIO.writeFile groupsconf $ T.unlines.V.toList.V.map (commaIns.V.toList.(\(x, y) -> V.cons x y)) $ pqgroup
- cmdCheck postfunc msgq botconf
+ TIO.writeFile groupsconf $ T.unlines.V.toList.V.map (commaIns.V.toList.(\(x, y) -> V.cons x y)) $ group
+ cmdCheck postfunc msgq botconf 
   where
    addDeleteSchedule q d g = takeMVar q >>= \x -> putMVar q x { mentions = if (V.null.mentions) x then V.empty else  (V.tail.mentions)x
                                                               , schedule = if V.null d then schedule x else schedule x V.++ d
-                                                              , pqGroups = g} 
+                                                              . pqGroup  = if V.null g then pqGroup x else g}
    cmdt = 60*1000*1000 -- 1min
 
--- tweet command 
-tweetCmd :: PostQueue -> (Postfunc -> PostQueue -> BotsAPI -> IO (V.Vector (T.Text, ZonedTime), V.Vector (T.Text, V.Vector T.Text)))
-tweetCmd msg = case T.unpack (filterCmd msg 2) of
- "post"      -> twpostCmd
- "rm"        -> twrmCmd 
- "help"      -> twHelpCmd
- "show"      -> twshowCmd
- _           -> twgroupCmd
+parseCmd :: GetMention -> V.Vector GandU -> (Func)
+parseCmd gmt gandu = let lex = lexAnalyser gmt in case lex of 
+ Right s -> errorCmd s
+ Left l  -> case (T.unpack.subcmd) l of
+  "post"   -> postSelector gmt l gandu
+  "show"   -> showSelector gmt l gandu
+  "add"    -> if (or.map (\x -> existInGroup (gmtToSN gmt) x)) [T.pack "sudo",filterCmd msg 3] 
+               then gaddCmd (group l) (users l) 
+               else errorCmd (T.pack "permission denied") (gmtToUI gmt)
+  "rm"     -> rmSelector gmt l gandu
+  "create" -> if existInGroup (gmtToSN gmt) (T.pack "sudo") then gcreateCmd (group lex)
+                                                            else errorCmd (T.pack "permission denied") (gmtToUI gmt)
+  "delete" -> if existInGroup (gmtToSN gmt) (T.pack "sudo") then gdeleteCmd (group lex)
+                                                            else errorCmd (T.pack "permission denied") (gmtToUI gmt)
+  "help"   -> allhelpCmd (getUserIdFromGmt gmt) 
+  _        -> errorCmd (T.append (subcmd l) (T.pack " not found."))
 
--- user command
---userCmd :: PostQueue -> (PostQueue -> BotsAPI -> Postfunc -> IO (V.Vector (T.Text, ZonedTime), V.Vector (T.Text, V.Vector T.Text)))
---userCmd msg = case T.unpack (filterCmd msg 2) of
--- "add"  -> uaddCmd
--- "rm"   -> urmCmd 
--- "help" -> uhelpCmd
--- "show" -> ushowCmd
--- _      -> errorCmd
+showSelector :: GetMention -> Lex -> V.Vector GandU -> V.Vector GandU -> (Func)
+showSelector gmt lex gandu = case (gmtToRpStatus gmt, gmt_entities gmt, group lex, users lex) of
+ (Nothing, [] , T.empty, V.empty) -> errorCmd (T.pack "target which you want to check isn`t selected")
+ (Nothing, [] , T.empty, users)   -> ushowCmd users
+ (Nothing, [] , group  , V.empty) -> gshowCmd (gmtToUI gmt) (groupInUser group gandu)
+ (Nothing, [x], group  , V.empty) -> twshowCmd x
+ (Just a , [] , group  , V.empty) -> twshowCmd a
+ otherwise                        -> errorCmd (T.pack ".......")
 
--- web command comming soon?
---webCmd :: MVar PostQueue -> [String] -> IO (V.Vector (T.Text, ZonedTime)) -- post web
---webCmd msg botconf postdata = calcWebPost postdata msg botconf typeTL
+rmSelector :: GetMention -> Lex -> V.Vector GandU -> (Func)
+rmSelector gmt lex gandu = case  (gmtToRpStatus gmt, gmt_entities gmt, group lex, users lex) of
+ (Nothing, [] , T.empty, V.empty) -> errorCmd (T.pack "target which you want to remove isn't selected") (gmtToUI gmt)
+ (Nothing, [] , group  , users)   -> if (or.map (\x -> existInGroup (gmtToSN gmt) x gandu)) [T.pack "sudo", group lex] 
+                                                                                   then grmCmd group (gmtToUI gmt)
+                                                                                   else errorCmd (T.pack "permission denied") (gmtToUI gmt)
+ (Nothing, [x], T.empty, T.empty) -> if existInGroup (gmtToSN gmt) (T.pack "post") then twrmCmd (gmtToUI gmt) x
+                                                                                   else errorCmd (T.pack "permission denied")
+ (Just a , [] , T.empty, T.empty) -> if existInGroup (gmtToSN gmt) (T.pack "post") then twrmCmd (gmtToUI gmt) a
+                                                                                   else errorCmd (T.pack "permission denied")
+ otherwise                        -> errorCmd (T.pack ".......") (gmtToUI gmt)
 
-groupCmd :: PostQueue -> (Postfunc -> PostQueue -> BotsAPI -> IO (V.Vector (T.Text, ZonedTime), V.Vector (T.Text, V.Vector T.Text)))
-groupCmd msg = case T.unpack (filterCmd msg 2) of
- "create" -> gcreateCmd
- "add"    -> gaddCmd
- "rm"     -> grmCmd 
- "delete" -> gdeleteCmd
- "show"   -> gshowCmd -- group or user 
- "help"   -> ghelpCmd
- _        -> errorCmd
+postSelector :: GetMention -> Lex -> (Postfunc -> BotsAPI -> IO(V.Vector (T.Text, ZonedTime), V.Vector (T.Text, V.Vector T.Text)))
+postSelector gmt lex = case (group lex) of
+ T.empty -> if existInGroup (gmtToSN gmt) (T.pack "post") then twgroupCmd (gmtToUI gmt) (getTweetNextId gmt) users
+                                                          else errorCmd (T.pack "permission denied") (gmtToUI gmt)
+ _       -> if existInGroup (gmtToSN gmt) (T.pack "post") then twpostCmd (gmtToUI gmt) (getTweetNextId gmt)
+                                                          else errorCmd (T.pack "permission denied") (gmtToUI gmt)
 

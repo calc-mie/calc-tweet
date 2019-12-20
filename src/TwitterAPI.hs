@@ -88,6 +88,7 @@ $(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 4 }  ''GetEntiti
 
 data GetMention = GetMention { gmt_id_str :: Text
                              , gmt_text   :: Text
+                             , gmt_in_reply_to_status_id_str :: Maybe Text
                              , gmt_entities :: GetEntities
                              , gmt_user   :: User} deriving (Show)
 $(deriveJSON defaultOptions { fieldLabelModifier = Prelude.drop 4 }  ''GetMention)
