@@ -46,8 +46,8 @@ data BotsAPI = BotsAPI { twitter   :: [String]
                        , slack     :: [String]
                        , discord   :: String}
 
-data Postfunc = Postfunc { tl       :: T.Text -> T.Text -> [String] -> IO(T.Text)
-                         , dm       :: T.Text -> T.Text -> [String] -> IO(T.Text)}
+data Postfunc = Postfunc { tl       :: T.Text -> T.Text -> BotsAPI -> IO(T.Text)
+                         , dm       :: T.Text -> T.Text -> BotsAPI -> IO(T.Text)}
 
 lexAllNull = Lex { subcmd = T.empty
                  , group  = T.empty
@@ -79,10 +79,10 @@ mentiont = 12*1000*1000 :: Int {-12 second -}
 
 
 lexAnalyser :: GetMention -> Either T.Text Lex
-lexAnalyser gmt = case ((lexTextAnalyser.T.words.gmt_text) gmt, gmt_in_reply_to_status_id_str gmt, (gen_urls.gmt_entities) gmt) of
+lexAnalyser gmt = case ((lexTextAnalyser.parse) gmt, gmt_in_reply_to_status_id_str gmt, (gen_urls.gmt_entities) gmt) of
  (Left t, _, _ )        -> Left t
- (Right l, Nothing, [])  -> Right $ l {lex_screen_name = gmtToSN gmt, lex_user_id = gmtToUI gmt}
- (Right l, Just a, [])   -> Right $ l {first_id = (a, False), lex_screen_name = gmtToSN gmt, lex_user_id = gmtToUI gmt}
+ (Right l, Nothing, [])  -> Right $ l { lex_screen_name = gmtToSN gmt, lex_user_id = gmtToUI gmt}
+ (Right l, Just a, [])   -> Right $ l { first_id = (a, False), lex_screen_name = gmtToSN gmt, lex_user_id = gmtToUI gmt}
  (Right l, Nothing, [a]) -> Right $ l { first_id = (gulToTweetId a, True), lex_screen_name = gmtToSN gmt, lex_user_id = gmtToUI gmt}
  (Right l, Just a, x)    -> Left $ T.pack "double post target."
  _                       -> Left $ T.pack "....."
@@ -92,8 +92,8 @@ lexAnalyser gmt = case ((lexTextAnalyser.T.words.gmt_text) gmt, gmt_in_reply_to_
   lexTextAnalyser (x:xs) = case lexTextAnalyser xs of
    Left  err -> Left err
    Right lan -> case T.head x of
-    ':' -> if (T.null.group) lan then Right lan { group = x } else Left $ analyGroupsError x (group lan)
-    '@' -> Right lan { users =  V.cons x (users lan) }
+    ':' -> if (T.null.group) lan then Right lan { group = T.tail x } else Left $ analyGroupsError x (group lan)
+    '@' -> Right lan { users =  V.cons (T.tail x) (users lan) }
     _   -> if (T.null.subcmd) lan then Right lan { subcmd = x } else Left $ analySubcmdError x (subcmd lan)
   analyGroupsError :: T.Text -> T.Text -> T.Text
   analyGroupsError first second = T.append (T.pack "double groups selects : ") $  T.append first $ T.append (T.pack " and ") second
@@ -101,7 +101,10 @@ lexAnalyser gmt = case ((lexTextAnalyser.T.words.gmt_text) gmt, gmt_in_reply_to_
   analySubcmdError first second = T.append (T.pack "double sub command selects : ") $ T.append first $ T.append (T.pack " and ") second
   gulToTweetId :: GetUrls -> T.Text
   gulToTweetId = (snd.T.breakOnEnd (T.singleton '/')).gul_expanded_url
+  parse :: GetMention -> [T.Text]
+  parse = Prelude.tail.T.words.Prelude.head.T.lines.gmt_text
 
+-- bug??
 restoreSeds :: T.Text -> V.Vector T.Text -> T.Text
 restoreSeds text sed = case V.null sed of
  True  -> text
@@ -176,7 +179,7 @@ getFirstGtl fid = (\a -> case a of Nothing -> getTLAllNULL
    
 
 -- filterCmd vmsgq n = ((!! n).Prelude.head.Prelude.map T.words.T.lines.gmt_text.V.head.mentions) vmsgq 
-getTlToCmd msg n = ((!! n).Prelude.head.Prelude.map T.words.T.lines) msg
+-- getTlToCmd msg n = ((!! n).Prelude.head.Prelude.map T.words.T.lines) msg
 
 isEqStrText :: String -> T.Text -> Bool
 isEqStrText str tx = case (Prelude.null str, T.null tx) of

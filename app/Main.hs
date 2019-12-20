@@ -36,35 +36,24 @@ main = do
                                Right l -> (gmt_id_str.Prelude.head) l) <$> getMention (T.singleton '1') (twitter botconf)
  monitoring (Postfunc { tl = showTL, dm = showDM }) msgqueue tlmention botconf
 
-showTL :: T.Text -> T.Text -> [String] -> IO(T.Text)
-showTL msg id conf = tweet msg id conf >>= (\tl -> return (case tl of Left  e -> error e
-                                                                      Right t -> ptl_id_str t))
+showTL :: T.Text -> T.Text -> BotsAPI -> IO(T.Text)
+showTL postTarget id conf = if T.null postTarget then return T.empty else do
+ postSlack postTarget $ slack conf -- post slack
+ sendMessageDiscord postTarget $ discord conf -- post discord
+ let msgs = splitN postTarget 140 -- 140 is twitter max size
+ start_id <- twfunc (Prelude.head msgs) (T.empty) -- post Timeline
+ if (not.Prelude.null.Prelude.tail) msgs then postTweetInReply (Prelude.tail msgs) start_id twfunc else return T.empty
+ where
+  twfunc :: T.Text -> T.Text -> IO(T.Text)
+  twfunc msg id = tweet msg id (twitter conf) >>= (\tl -> return (case tl of Left  e -> error e
+                                                                             Right t -> ptl_id_str t))
+  splitN :: T.Text -> Int -> [T.Text] 
+  splitN raw max = if T.length raw <= max then [raw] else (T.take max raw):splitN (T.drop max raw) max
+  postTweetInReply :: [T.Text] -> T.Text -> (T.Text -> T.Text -> IO(T.Text)) -> IO(T.Text)
+  postTweetInReply [] _ _            = return (T.empty)
+  postTweetInReply (x:xs) nowid func = if T.null nowid then return (T.empty) else do
+   nextid <- twfunc x nowid
+   postTweetInReply xs nextid func
 
-showDM :: T.Text -> T.Text -> [String] -> IO(T.Text)
-showDM msg id conf = postDM msg id conf >> return T.empty
-
-
- -- get mentions timeline
- -- main
--- direct_message <- getGetDM
--- case direct_message of
---  Right dm -> monitoring (setPostData ((getcreated_timestamp . head . getevents) dm, oldcalcweb, [], False)) >> putStrLn "fin"
-
-
---typeDM :: T.Text -> PostData -> GetMention -> [String] -> IO T.Text
---typeDM posttx postdata tw botconf = do
--- postDM posttx ((getsender_id.getmessage_create.head) tw) botconf
--- return (T.pack "")
---
---typeTL :: T.Text -> PostData -> GetMention -> [String] -> IO T.Text
---typeTL posttx postdata tw botconf = do 
--- response <- tweet posttx botconf
--- postSlack posttx
--- case response of
---  Left err -> return (T.pack "")
---  Right re -> return (id_str re)
---
---typeTerm :: T.Text -> PostData -> GetMention -> [String] -> IO T.Text 
---typeTerm posttx postdata tw botconf = do
--- print posttx
--- return (T.pack "")
+showDM :: T.Text -> T.Text -> BotsAPI -> IO(T.Text)
+showDM msg id conf = if T.null msg then return T.empty else postDM msg id (twitter conf) >> return T.empty

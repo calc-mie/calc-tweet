@@ -42,9 +42,9 @@ cmdCheck postfunc msgq botconf = readMVar msgq >>= \nowq -> if (V.null.mentions)
  let lex     = lexAnalyser ((V.head.mentions) nowq)
  let command = parseCmd lex (pqGroups nowq) ((gmtToUI.V.head.mentions) nowq)
  (sc, group) <- command postfunc botconf
+ TIO.writeFile groupsconf $ T.unlines.V.toList.V.map (commaIns.V.toList.(\(x, y) -> V.cons x y)) $ if V.null group then pqGroups nowq else group
  addDeleteSchedule msgq sc group -- add or delete schedule 
  threadDelay cmdt
- TIO.writeFile groupsconf $ T.unlines.V.toList.V.map (commaIns.V.toList.(\(x, y) -> V.cons x y)) $ group
  cmdCheck postfunc msgq botconf 
   where
    addDeleteSchedule q d g = takeMVar q >>= \x -> putMVar q x { mentions = if (V.null.mentions) x then V.empty else  (V.tail.mentions)x

@@ -36,11 +36,11 @@ main = do
                                Right l -> (gmt_id_str.Prelude.head) l) <$> getMention (T.singleton '1') (twitter botconf)
  monitoring (Postfunc {tl = showTL, dm = showDM}) msgqueue tlmention botconf 
 
-showTL :: T.Text -> T.Text -> [String] -> IO(T.Text)
+showTL :: T.Text -> T.Text -> BotsAPI -> IO(T.Text)
 showTL msg id conf = do
  putStrLn "======= test showTL ========"
- print msg
- print id 
+ TIO.putStrLn msg
+ TIO.putStrLn id 
  putStrLn "======= end showTL =========="
  return T.empty
 
