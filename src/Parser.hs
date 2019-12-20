@@ -22,13 +22,13 @@ monitoring func msgq since_id botconf = do
  threadDelay mentiont
  tlmention <- gmtToVector <$> getMention since_id (twitter botconf)
  if V.null tlmention then monitoring func msgq since_id botconf else do
-  let queues = V.filter (\x -> existUser (gmtToSN x) (bApiGroup botconf)) tlmention
   befq <- takeMVar msgq  -- get and stop other threads
+  let queues = V.filter (\x -> existUser (gmtToSN x) (pqGroups befq)) tlmention
   (if (V.null.mentions) befq then do
     putMVar msgq befq {mentions = queues} -- start thread 
     forkIO $ cmdCheck func msgq botconf -- create thread
     return ()
-   else putMVar msgq befq{mentions = ((mentions befq) V.++ queues}) -- start thread
+   else putMVar msgq befq{mentions = ((mentions befq) V.++ queues)}) -- start thread
   >> monitoring func msgq ((gmt_id_str.V.head) tlmention) botconf
  where
   filterCmdCalcTweet :: GetMention -> Bool
@@ -39,8 +39,9 @@ monitoring func msgq since_id botconf = do
 
 cmdCheck :: Postfunc -> MVar PostQueue -> BotsAPI -> IO ()
 cmdCheck postfunc msgq botconf = readMVar msgq >>= \nowq -> if (V.null.mentions) nowq then return () else do 
- let command = ParseCmd ((V.head.mentions) nowq) (pqGroup nowq)
- (sc, group) <- command postfunc botconf
+ let lex     = lexAnalyser ((V.head.mentions) nowq)
+ let command = parseCmd lex (pqGroups nowq)
+ (sc, group) <- command lex postfunc botconf
  addDeleteSchedule msgq sc -- add or delete schedule 
  threadDelay cmdt
  TIO.writeFile groupsconf $ T.unlines.V.toList.V.map (commaIns.V.toList.(\(x, y) -> V.cons x y)) $ group
@@ -48,51 +49,45 @@ cmdCheck postfunc msgq botconf = readMVar msgq >>= \nowq -> if (V.null.mentions)
   where
    addDeleteSchedule q d g = takeMVar q >>= \x -> putMVar q x { mentions = if (V.null.mentions) x then V.empty else  (V.tail.mentions)x
                                                               , schedule = if V.null d then schedule x else schedule x V.++ d
-                                                              . pqGroup  = if V.null g then pqGroup x else g}
+                                                              , pqGroups = if V.null g then pqGroups x else g}
    cmdt = 60*1000*1000 -- 1min
 
-parseCmd :: GetMention -> V.Vector GandU -> (Func)
-parseCmd gmt gandu = let lex = lexAnalyser gmt in case lex of 
+parseCmd :: Either T.Text Lex -> V.Vector GandU -> (Func)
+parseCmd lex gandu = case lex of 
  Right s -> errorCmd s
  Left l  -> case (T.unpack.subcmd) l of
-  "post"   -> postSelector gmt l gandu
-  "show"   -> showSelector gmt l gandu
-  "add"    -> if (or.map (\x -> existInGroup (gmtToSN gmt) x)) [T.pack "sudo",filterCmd msg 3] 
-               then gaddCmd (group l) (users l) 
-               else errorCmd (T.pack "permission denied") (gmtToUI gmt)
-  "rm"     -> rmSelector gmt l gandu
-  "create" -> if existInGroup (gmtToSN gmt) (T.pack "sudo") then gcreateCmd (group lex)
-                                                            else errorCmd (T.pack "permission denied") (gmtToUI gmt)
-  "delete" -> if existInGroup (gmtToSN gmt) (T.pack "sudo") then gdeleteCmd (group lex)
-                                                            else errorCmd (T.pack "permission denied") (gmtToUI gmt)
-  "help"   -> allhelpCmd (getUserIdFromGmt gmt) 
+  "post"   -> postSelector l gandu
+  "show"   -> showSelector l gandu
+  "add"    -> if (or.map (\x -> existInGroup (lex_screen_name lex) x)) [T.pack "sudo",group lex] 
+               then gaddCmd
+               else errorCmd (T.pack "permission denied")
+  "rm"     -> rmSelector l gandu
+  "create" -> if existInGroup (lex_screen_name lex) (T.pack "sudo") then gcreateCmd
+                                                                    else errorCmd (T.pack "permission denied")
+  "delete" -> if existInGroup (lex_screen_name lex) (T.pack "sudo") then gdeleteCmd
+                                                                    else errorCmd (T.pack "permission denied")
+  "help"   -> allhelpCmd 
   _        -> errorCmd (T.append (subcmd l) (T.pack " not found."))
 
-showSelector :: GetMention -> Lex -> V.Vector GandU -> V.Vector GandU -> (Func)
-showSelector gmt lex gandu = case (gmtToRpStatus gmt, gmt_entities gmt, group lex, users lex) of
- (Nothing, [] , T.empty, V.empty) -> errorCmd (T.pack "target which you want to check isn`t selected")
- (Nothing, [] , T.empty, users)   -> ushowCmd users
- (Nothing, [] , group  , V.empty) -> gshowCmd (gmtToUI gmt) (groupInUser group gandu)
- (Nothing, [x], group  , V.empty) -> twshowCmd x
- (Just a , [] , group  , V.empty) -> twshowCmd a
- otherwise                        -> errorCmd (T.pack ".......")
+showSelector :: Lex -> V.Vector GandU -> V.Vector GandU -> (Func)
+showSelector lex gandu = case ((T.empty.first_id) lex, (T.empty.group) lex || (V.empty.users) lex) of
+ (True, True)  -> errorCmd (T.pack "target which you want to check isn`t selected")
+ (True, False) -> gandushowCmd
+ (False, True) -> twshowCmd
+ otherwise     -> errorCmd (T.pack ".......")
 
-rmSelector :: GetMention -> Lex -> V.Vector GandU -> (Func)
-rmSelector gmt lex gandu = case  (gmtToRpStatus gmt, gmt_entities gmt, group lex, users lex) of
- (Nothing, [] , T.empty, V.empty) -> errorCmd (T.pack "target which you want to remove isn't selected") (gmtToUI gmt)
- (Nothing, [] , group  , users)   -> if (or.map (\x -> existInGroup (gmtToSN gmt) x gandu)) [T.pack "sudo", group lex] 
-                                                                                   then grmCmd group (gmtToUI gmt)
-                                                                                   else errorCmd (T.pack "permission denied") (gmtToUI gmt)
- (Nothing, [x], T.empty, T.empty) -> if existInGroup (gmtToSN gmt) (T.pack "post") then twrmCmd (gmtToUI gmt) x
-                                                                                   else errorCmd (T.pack "permission denied")
- (Just a , [] , T.empty, T.empty) -> if existInGroup (gmtToSN gmt) (T.pack "post") then twrmCmd (gmtToUI gmt) a
-                                                                                   else errorCmd (T.pack "permission denied")
- otherwise                        -> errorCmd (T.pack ".......") (gmtToUI gmt)
+rmSelector :: Lex -> V.Vector GandU -> (Func)
+rmSelector lex gandu = case  ((T.null.first_id) lex, (T.null.group) lex, (T.null.users) lex) of
+ (False , True, True)  -> errorCmd (T.pack "target which you want to remove isn't selected")
+ (False , True, False) -> if (or.map (\x -> existInGroup (lex_screen_name lex) x gandu)) [T.pack "sudo", group lex] then grmCmd
+                           else errorCmd (T.pack "permission denied")
+ (True, False, False)  -> if existInGroup (lex_screen_name lex) (T.pack "post") then twrmCmd
+                           else errorCmd (T.pack "permission denied")
+ otherwise             -> errorCmd (T.pack "which is target?")
 
-postSelector :: GetMention -> Lex -> (Postfunc -> BotsAPI -> IO(V.Vector (T.Text, ZonedTime), V.Vector (T.Text, V.Vector T.Text)))
-postSelector gmt lex = case (group lex) of
- T.empty -> if existInGroup (gmtToSN gmt) (T.pack "post") then twgroupCmd (gmtToUI gmt) (getTweetNextId gmt) users
-                                                          else errorCmd (T.pack "permission denied") (gmtToUI gmt)
- _       -> if existInGroup (gmtToSN gmt) (T.pack "post") then twpostCmd (gmtToUI gmt) (getTweetNextId gmt)
-                                                          else errorCmd (T.pack "permission denied") (gmtToUI gmt)
+postSelector :: Lex -> V.Vector GandU -> (Postfunc -> BotsAPI -> IO(V.Vector (T.Text, ZonedTime), V.Vector (T.Text, V.Vector T.Text)))
+postSelector lex gandu = case ((T.null.group) lex, existInGroup (lex_screen_name lex) (T.pack "post") gandu) of
+ (True, True)  -> twgroupCmd
+ (False, True) -> twpostCmd
+ _             -> errorCmd (T.pack "permission denied")
 
