@@ -1,5 +1,5 @@
 Usage :: calc-tweet 
- calc-tweet tweet ... Usage :: calc-tweet tweet 
- calc-tweet user ... Usage :: calc-tweet user
- calc-tweet group ... Usage :: calc-tweet group
- calc-tweet help ... show this manual on direct message
+ Lexcial
+  <name> ... subcommand
+  @<name>... user
+  :<name>... group
