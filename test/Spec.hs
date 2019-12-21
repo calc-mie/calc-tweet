@@ -34,7 +34,7 @@ main = do
  -- main
  tlmention <- (\t -> case t of Left  e -> error e
                                Right l -> (gmt_id_str.Prelude.head) l) <$> getMention (T.singleton '1') (twitter botconf)
- monitoring (Postfunc {tl = showTL, dm = showDM}) msgqueue tlmention botconf 
+ monitoring (PFData {tl = showTL, dm = showDM}) msgqueue tlmention botconf 
 
 showTL :: T.Text -> T.Text -> BotsAPI -> IO(T.Text)
 showTL msg id conf = do
@@ -44,7 +44,13 @@ showTL msg id conf = do
  putStrLn "======= end showTL =========="
  return T.empty
 
-showDM = showTL
+showDM :: T.Text -> T.Text -> BotsAPI -> IO(T.Text)
+showDM msg id conf = do
+ putStrLn "======= test showDM ========"
+ TIO.putStrLn msg
+ TIO.putStrLn id 
+ putStrLn "======= end showDM =========="
+ return T.empty
 
 --main = do
 -- print "test startiing!!!"

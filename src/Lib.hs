@@ -17,7 +17,8 @@ import qualified Data.Text.Lazy.IO as DTLIO
 import qualified Data.Vector as V
 
 type GandU = (T.Text, V.Vector T.Text) -- (group, users)
-type Func = Postfunc -> BotsAPI -> IO(V.Vector (T.Text, ZonedTime), V.Vector GandU)
+type Postfunc = T.Text -> T.Text -> BotsAPI -> IO(T.Text)
+type Execfunc = BotsAPI -> IO(V.Vector (T.Text, ZonedTime), V.Vector GandU)
 
 -- have to MVector
 data PostQueue = PostQueue { mentions :: V.Vector GetMention
@@ -46,8 +47,8 @@ data BotsAPI = BotsAPI { twitter   :: [String]
                        , slack     :: [String]
                        , discord   :: String}
 
-data Postfunc = Postfunc { tl       :: T.Text -> T.Text -> BotsAPI -> IO(T.Text)
-                         , dm       :: T.Text -> T.Text -> BotsAPI -> IO(T.Text)}
+data PFData = PFData { tl       :: T.Text -> T.Text -> BotsAPI -> IO(T.Text)
+                     , dm       :: T.Text -> T.Text -> BotsAPI -> IO(T.Text)}
 
 lexAllNull = Lex { subcmd = T.empty
                  , group  = T.empty
@@ -117,21 +118,21 @@ rtSearchReplyTree tl tls = if T.null (gtl_id_str tl) then T.empty else do
  T.append (restoreSeds (gtl_text tl) (V.map gtl_text seds)) $ T.append (T.singleton '\n') $ rtSearchReplyTree next tls
   where
    sedsNext :: V.Vector GetTL -> (V.Vector GetTL, GetTL)
-   sedsNext rep = case V.find (not.isEqStrText "calc-tweet".(`getTlToCmd` 0).gtl_text) rep of
-    Nothing -> (V.filter (isEqStrText "calc-tweet".(`getTlToCmd` 0).gtl_text) rep, getTLAllNULL)
-    Just a  -> (V.filter (isEqStrText "calc-tweet".(`getTlToCmd` 0).gtl_text) rep, a)
+   sedsNext rep = case V.find (not.sedCheck 0) rep of
+    Nothing -> (V.filter (\x -> sedCheck 0 x && sedCheck 1 x) rep, getTLAllNULL)
+    Just a  -> (V.filter (\x -> sedCheck 0 x && sedCheck 1 x) rep, a)
 
 repSearchReplyTree :: GetTL -> V.Vector GetTL -> T.Text
 repSearchReplyTree tl tls = do
  let replys = V.filter ((==(rpStatus tl)).gtl_id_str) tls
-     seds   = V.filter (\x -> check 0 x && check 1 x) replys
+     seds   = V.filter (\x -> sedCheck 0 x && sedCheck 1 x) replys
  case gtl_in_reply_to_status_id_str tl of
   Nothing -> restoreSeds (gtl_text tl) (V.map gtl_text seds)
   Just x  -> T.append (repSearchReplyTree (statusToGl x tls) tls) $ restoreSeds (gtl_text tl) (V.map gtl_text seds)
- where
-  check :: Int -> GetTL -> Bool 
-  check 0 = isEqStrText "calc-tweet".(`getTlToCmd` 0).gtl_text
-  check 1 = isEqStrText "sed".(`getTlToCmd` 1).gtl_text
+
+sedCheck :: Int -> GetTL -> Bool 
+sedCheck 0 = isEqStrText "calc-tweet".(`getTlToCmd` 0).gtl_text
+sedCheck 1 = isEqStrText "sed".(`getTlToCmd` 1).gtl_text
 
 searchReplyId :: T.Text -> V.Vector GetTL -> [T.Text]
 searchReplyId id tl = if T.null id then [] else
@@ -179,7 +180,7 @@ getFirstGtl fid = (\a -> case a of Nothing -> getTLAllNULL
    
 
 -- filterCmd vmsgq n = ((!! n).Prelude.head.Prelude.map T.words.T.lines.gmt_text.V.head.mentions) vmsgq 
--- getTlToCmd msg n = ((!! n).Prelude.head.Prelude.map T.words.T.lines) msg
+getTlToCmd msg n = ((!! n).Prelude.head.Prelude.map T.words.T.lines) msg
 
 isEqStrText :: String -> T.Text -> Bool
 isEqStrText str tx = case (Prelude.null str, T.null tx) of
