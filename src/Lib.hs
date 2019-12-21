@@ -74,6 +74,7 @@ twHelpFile = "/usr/local/calc-tweet/helps/tweet_help.txt"
 uHelpFile = "/usr/local/calc-tweet/helps/users_help.txt"
 gHelpFile = "/usr/local/calc-tweet/helps/groups_help.txt"
 groupsconf = "/usr/local/calc-tweet/groups.conf"
+logFile = "/var/log/calc-tweet/recept.log"
 
 emptyint = 1*1000*1000  :: Int {- 1 second -} 
 mentiont = 12*1000*1000 :: Int {-12 second -}
@@ -128,7 +129,7 @@ repSearchReplyTree tl tls = do
      seds   = V.filter (\x -> sedCheck 0 x && sedCheck 1 x) replys
  case gtl_in_reply_to_status_id_str tl of
   Nothing -> restoreSeds (gtl_text tl) (V.map gtl_text seds)
-  Just x  -> T.append (repSearchReplyTree (statusToGl x tls) tls) $ restoreSeds (gtl_text tl) (V.map gtl_text seds)
+  Just x  -> T.append (repSearchReplyTree (statusToGl x tls) tls) $ T.append (T.singleton '\n') $ restoreSeds (gtl_text tl) (V.map gtl_text seds)
 
 sedCheck :: Int -> GetTL -> Bool 
 sedCheck 0 = isEqStrText "calc-tweet".(`getTlToCmd` 0).gtl_text
@@ -252,9 +253,6 @@ rmUsersInGroup user group raw = if V.null user then raw else do
        lnext = V.tail.snd.V.splitAt a $ next
    fnext V.++ (V.singleton (fst (next V.! a), mnext)) V.++ lnext
 
---queueToUser :: PostQueue -> T.Text
---queueToUser = gur_screen_name.gmt_user.V.head.mentions
-
 gmtToSN :: GetMention -> T.Text
 gmtToSN = gur_screen_name.gmt_user
 
@@ -270,3 +268,13 @@ deleteGroup :: T.Text -> V.Vector (T.Text, V.Vector T.Text) -> V.Vector (T.Text,
 deleteGroup group raw = case V.elemIndex group ((V.map Prelude.fst) raw) of
  Nothing -> raw
  Just a  -> V.filter ((/=group).fst) raw
+
+writeLog :: Lex -> Bool -> IO ()
+writeLog lex bool = do
+ let aore = T.pack (if bool then "accept" else "error")
+ time <- T.pack.formatTime defaultTimeLocale "%Y/%m/%d-%T" <$> getZonedTime
+ let utext = V.foldl T.append T.empty (users lex)
+     texts = T.append (commaIns [time, lex_screen_name lex, subcmd lex, group lex, utext, aore]) (T.singleton '\n')
+ TIO.appendFile logFile texts
+ 
+ 

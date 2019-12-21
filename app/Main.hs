@@ -47,7 +47,7 @@ showTL postTarget id conf = if T.null postTarget then return T.empty else do
   twfunc :: T.Text -> T.Text -> IO(T.Text)
   twfunc msg id = tweet msg id (twitter conf) >>= (\tl -> return (case tl of Left  e -> error e
                                                                              Right t -> ptl_id_str t))
-  splitN :: T.Text -> Int -> [T.Text] 
+  splitN :: T.Text -> Int -> [T.Text]
   splitN raw max = if T.length raw <= max then [raw] else (T.take max raw):splitN (T.drop max raw) max
   postTweetInReply :: [T.Text] -> T.Text -> (T.Text -> T.Text -> IO(T.Text)) -> IO(T.Text)
   postTweetInReply [] _ _            = return (T.empty)
