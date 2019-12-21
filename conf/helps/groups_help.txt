@@ -1,7 +1,6 @@
-Usage :: calc-tweet group
- calc-tweet group create <group name> @<bot`s screen_name> ... create group
- calc-tweet group add <group name> <screen_name> @<bot`s screen_name> ... add user in <group name>
- calc-tweet group rm <group name> <screen_name> @<bot`s screen_name> ... remove user from <group name>
- calc-tweet group delete <group name> @<bot`s screen_name> ... remove group
- calc-tweet group show <group name> @<bots` screen_name> ... show users in <group name>
- calc-tweet group help ... show this manual on direct message
+ calc-tweet create :<name> @<bot`s screen_name> ... create group
+ calc-tweet add :<name> @<name> @<bot`s screen_name> ... add @<user> in :<name>
+ calc-tweet rm :<name> @<name> @<bot`s screen_name> ... remove @<name> from :<name>
+ calc-tweet delete :<name> @<bot`s screen_name> ... remove group
+ calc-tweet show :<name> @<name> @<bots` screen_name> ... show users in @<name>
+ calc-tweet help ... show this manual on direct message
