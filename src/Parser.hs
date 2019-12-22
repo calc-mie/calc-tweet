@@ -23,7 +23,7 @@ monitoring func msgq since_id botconf = do
  tlmention <- gmtToVector <$> getMention since_id (twitter botconf)
  if V.null tlmention then monitoring func msgq since_id botconf else do
   befq <- takeMVar msgq  -- get and stop other threads
-  let queues = V.filter (\x -> existUser (gmtToSN x) (pqGroups befq)) tlmention
+  let queues = V.filter (\x -> existUser (gmtToSN x) (pqGroups befq) && filterCmdCalcTweet x) tlmention
   (if (V.null.mentions) befq then do
     putMVar msgq befq {mentions = queues} -- start thread 
     forkIO $ cmdCheck func msgq botconf -- create thread
